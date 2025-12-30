@@ -1,0 +1,52 @@
+{
+    "name": "smart-panel-connector",
+    "version": "0.1.0",
+    "description": "Local middleware for Smart Panel - Bridge between cloud and OBS/vMix",
+    "main": "build/index.js",
+    "bin": "build/index.js",
+    "scripts": {
+      "dev": "tsx watch src/index.ts",
+      "build": "tsc",
+      "build:exe": "npm run build && pkg . --targets node18-win-x64 --output dist/smart-panel-connector.exe",
+      "build:installer": "node scripts/build-installer.js",
+      "start": "node build/index.js"
+    },
+    "keywords": [
+      "broadcast",
+      "obs",
+      "vmix",
+      "graphics",
+      "middleware"
+    ],
+    "author": "Smart Panel",
+    "license": "UNLICENSED",
+    "dependencies": {
+      "obs-websocket-js": "^5.0.5",
+      "ws": "^8.14.0",
+      "axios": "^1.6.0",
+      "winston": "^3.11.0",
+      "winston-daily-rotate-file": "^4.7.1",
+      "inquirer": "^9.2.12",
+      "chalk": "^5.3.0",
+      "xlsx": "^0.18.5",
+      "chokidar": "^3.5.3",
+      "dotenv": "^16.3.1"
+    },
+    "devDependencies": {
+      "@types/node": "^20.10.0",
+      "@types/ws": "^8.5.9",
+      "@types/inquirer": "^9.0.7",
+      "typescript": "^5.3.0",
+      "tsx": "^4.6.0",
+      "pkg": "^5.8.1"
+    },
+    "pkg": {
+      "targets": [
+        "node18-win-x64"
+      ],
+      "outputPath": "dist",
+      "assets": [
+        "node_modules/obs-websocket-js/**/*"
+      ]
+    }
+  }
