@@ -1,6 +1,10 @@
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import os from 'os';
+import WebSocket from 'ws';
 import { LogManager } from '../core/LogManager';
+
+// Make WebSocket available globally for Supabase Realtime in Node.js
+(global as any).WebSocket = WebSocket;
 
 const SUPABASE_URL = 'https://vlxgdsqawtscusdkxbyv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZseGdkc3Fhd3RzY3VzZGt4Ynl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzNzYzOTEsImV4cCI6MjA3ODk1MjM5MX0.1GZdjLooB4BwE-OSPj46Ju-IPTpvUyCB2GHMzlSngb8';
@@ -32,6 +36,8 @@ export interface CommandPayload {
   action: string;
   params: Record<string, unknown>;
   request_id?: string;
+  response_channel?: string;
+  timestamp?: number;
 }
 
 export class SupabaseService {
@@ -47,8 +53,61 @@ export class SupabaseService {
 
   constructor(logger: LogManager) {
     this.logger = logger;
-    this.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    this.logger.info('[Supabase] Client initialized');
+
+    // Check WebSocket availability
+    const wsAvailable = typeof WebSocket !== 'undefined';
+    this.logger.info(`[Supabase] WebSocket available: ${wsAvailable}`);
+
+    // Log connection attempt
+    this.logger.info(`[Supabase] Connecting to: ${SUPABASE_URL}`);
+
+    this.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      realtime: {
+        params: {
+          eventsPerSecond: 10
+        },
+        timeout: 30000 // 30 second timeout
+      }
+    });
+
+    // Test if we can reach Supabase
+    this.testConnection();
+
+    // Test Realtime with simple channel
+    this.testRealtimeChannel();
+
+    this.logger.info('[Supabase] Client initialized with Realtime config');
+  }
+
+  private testRealtimeChannel(): void {
+    this.logger.info('[Supabase] Testing Realtime with simple channel...');
+    const testChannel = this.supabase.channel('test-channel-' + Date.now());
+    testChannel.subscribe((status, err) => {
+      this.logger.info(`[Supabase] TEST CHANNEL STATUS: ${status}`);
+      if (err) {
+        this.logger.error(`[Supabase] TEST CHANNEL ERROR: ${JSON.stringify(err)}`);
+      }
+      if (status === 'SUBSCRIBED') {
+        this.logger.info('✅ Realtime works!');
+        // Cleanup test channel
+        this.supabase.removeChannel(testChannel);
+      } else if (status === 'TIMED_OUT') {
+        this.logger.error('❌ Realtime test TIMED_OUT');
+      }
+    });
+  }
+
+  private async testConnection(): Promise<void> {
+    try {
+      const { data, error } = await this.supabase.from('middlewares').select('count').limit(1);
+      if (error) {
+        this.logger.error(`[Supabase] Connection test failed: ${error.message}`);
+      } else {
+        this.logger.info('[Supabase] Connection test OK - can reach database');
+      }
+    } catch (err) {
+      this.logger.error(`[Supabase] Connection test exception: ${(err as Error).message}`);
+    }
   }
 
   /**
@@ -127,7 +186,7 @@ export class SupabaseService {
 
       if (data && data.success) {
         this.middlewareId = data.middleware_id;
-        this.logger.info('[Supabase] Middleware registered', { middlewareId: this.middlewareId });
+        this.logger.info(`[Supabase] Middleware registered with ID: ${this.middlewareId}`);
         return { success: true, middleware_id: this.middlewareId || undefined };
       }
 
@@ -149,47 +208,172 @@ export class SupabaseService {
 
     this.onCommandCallback = onCommand || null;
 
-    this.logger.info('[Supabase] Subscribing to realtime channel...', {
-      channel: `middleware:${this.middlewareId}`
+    const channelName = `middleware:${this.middlewareId}`;
+    this.logger.info(`[Supabase] Subscribing to realtime channel: ${channelName}`);
+
+    // Simple channel - no complex config
+    this.channel = this.supabase.channel(`middleware:${this.middlewareId}`);
+
+    // Listen for ALL broadcast events first for debugging
+    this.channel.on('broadcast', { event: '*' }, (payload: any) => {
+      this.logger.info(`📥 ANY BROADCAST: ${JSON.stringify(payload)}`);
     });
 
-    this.channel = this.supabase
-      .channel(`middleware:${this.middlewareId}`)
-      .on('broadcast', { event: 'command' }, (payload) => {
-        this.logger.info('[Supabase] Command received', payload);
-        const cmd = payload.payload as CommandPayload;
+    // Listen specifically for command events
+    this.channel.on('broadcast', { event: 'command' }, (payload) => {
+      this.logger.info(`📥 COMMAND payload: ${JSON.stringify(payload)}`);
+      const cmd = payload.payload as CommandPayload;
+      this.logger.info(`📥 Command action: ${cmd.action}`);
 
-        // Handle ping internally
-        if (cmd.action === 'ping') {
-          this.sendPong(cmd.request_id);
-        }
+      // Handle ping internally
+      if (cmd.action === 'ping') {
+        this.logger.info('🏓 Responding with pong...');
+        this.sendPong(cmd.request_id);
+      }
 
-        // Forward to callback
-        if (this.onCommandCallback) {
-          this.onCommandCallback(cmd);
-        }
-      })
-      .subscribe((status) => {
-        this.logger.info('[Supabase] Channel status', { status });
-      });
+      // Forward to callback
+      if (this.onCommandCallback) {
+        this.onCommandCallback(cmd);
+      }
+    });
+
+    // Subscribe to the channel
+    this.channel.subscribe((status, err) => {
+      this.logger.info(`[Supabase] Channel status: ${status}`);
+      if (err) {
+        this.logger.error(`[Supabase] Channel error: ${JSON.stringify(err)}`);
+      }
+      if (status === 'SUBSCRIBED') {
+        this.logger.info('✅ Channel SUBSCRIBED - ready to receive commands');
+      } else if (status === 'TIMED_OUT') {
+        this.logger.error('❌ Channel TIMED_OUT - Realtime connection failed');
+      } else if (status === 'CHANNEL_ERROR') {
+        this.logger.error('❌ Channel ERROR');
+      }
+    });
   }
 
   /**
    * Respond to ping with pong
    */
   private async sendPong(requestId?: string): Promise<void> {
+    if (!this.channel) {
+      this.logger.error('❌ Cannot send pong - no channel');
+      return;
+    }
+
+    try {
+      this.logger.info(`🏓 Sending pong with request_id: ${requestId}`);
+      await this.channel.send({
+        type: 'broadcast',
+        event: 'pong',
+        payload: {
+          request_id: requestId,
+          timestamp: Date.now()
+        }
+      });
+      this.logger.info('✅ Pong sent successfully');
+    } catch (err) {
+      this.logger.error(`❌ Pong failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Send response back to Smart Panel via response_channel
+   */
+  async sendResponse(requestId: string, data: Record<string, unknown>, responseChannel?: string): Promise<void> {
+    const payload = {
+      request_id: requestId,
+      ...data
+    };
+
+    // If response_channel is provided, use it
+    if (responseChannel) {
+      this.logger.info(`📤 Sending response to channel: ${responseChannel}`);
+      const respChannel = this.supabase.channel(responseChannel);
+
+      respChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          respChannel.send({
+            type: 'broadcast',
+            event: 'response',
+            payload
+          }).then(() => {
+            this.logger.info(`✅ Response sent to ${responseChannel}`);
+            this.supabase.removeChannel(respChannel);
+          }).catch((err) => {
+            this.logger.error(`❌ Response failed: ${err.message}`);
+            this.supabase.removeChannel(respChannel);
+          });
+        }
+      });
+      return;
+    }
+
+    // Fallback to main channel
+    if (!this.channel) {
+      this.logger.error('❌ Cannot send response - no channel');
+      return;
+    }
+
+    try {
+      await this.channel.send({
+        type: 'broadcast',
+        event: 'response',
+        payload
+      });
+      this.logger.info(`📤 Response sent for request: ${requestId}`);
+    } catch (err) {
+      this.logger.error(`❌ Response failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Send error response back to Smart Panel
+   */
+  async sendError(requestId: string, error: string, responseChannel?: string): Promise<void> {
+    const payload = {
+      request_id: requestId,
+      success: false,
+      error
+    };
+
+    // If response_channel is provided, use it
+    if (responseChannel) {
+      this.logger.info(`📤 Sending error response to channel: ${responseChannel}`);
+      const respChannel = this.supabase.channel(responseChannel);
+
+      respChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          respChannel.send({
+            type: 'broadcast',
+            event: 'response',
+            payload
+          }).then(() => {
+            this.logger.info(`✅ Error response sent to ${responseChannel}`);
+            this.supabase.removeChannel(respChannel);
+          }).catch((err) => {
+            this.logger.error(`❌ Error response failed: ${err.message}`);
+            this.supabase.removeChannel(respChannel);
+          });
+        }
+      });
+      return;
+    }
+
+    // Fallback to main channel
     if (!this.channel) return;
 
-    this.logger.info('[Supabase] Sending pong response');
-
-    await this.channel.send({
-      type: 'broadcast',
-      event: 'pong',
-      payload: {
-        request_id: requestId,
-        timestamp: Date.now()
-      }
-    });
+    try {
+      await this.channel.send({
+        type: 'broadcast',
+        event: 'response',
+        payload
+      });
+      this.logger.info(`📤 Error response sent for request: ${requestId}`);
+    } catch (err) {
+      this.logger.error(`❌ Error response failed: ${(err as Error).message}`);
+    }
   }
 
   /**
@@ -306,7 +490,11 @@ export class SupabaseService {
   /**
    * Full connect flow: authenticate → register → subscribe → heartbeat
    */
-  async connect(apiKey: string, getConnections: () => ConnectionStatus): Promise<{ success: boolean; error?: string }> {
+  async connect(
+    apiKey: string,
+    getConnections: () => ConnectionStatus,
+    onCommand?: (command: CommandPayload) => void
+  ): Promise<{ success: boolean; error?: string }> {
     // Step 1: Authenticate
     const auth = await this.authenticate(apiKey);
     if (!auth.success) {
@@ -319,8 +507,8 @@ export class SupabaseService {
       return { success: false, error: reg.error };
     }
 
-    // Step 3: Subscribe to realtime
-    this.subscribeToCommands();
+    // Step 3: Subscribe to realtime with command handler
+    this.subscribeToCommands(onCommand);
 
     // Step 4: Start heartbeat
     this.startHeartbeat(getConnections);
