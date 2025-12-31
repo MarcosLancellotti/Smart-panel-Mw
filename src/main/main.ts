@@ -5,6 +5,7 @@ import { ConfigManager } from '../core/ConfigManager';
 import { ConnectorConfig } from '../types/config';
 import { SupabaseService, CommandPayload } from '../services/SupabaseService';
 import { OBSService } from '../services/OBSService';
+import { VMixService } from '../services/VMixService';
 
 // Get icon path based on platform
 function getIconPath(): string {
@@ -21,6 +22,7 @@ let logger: LogManager;
 let configManager: ConfigManager;
 let supabaseService: SupabaseService;
 let obsService: OBSService;
+let vmixService: VMixService;
 
 function createWindow(): void {
   const iconPath = getIconPath();
@@ -71,6 +73,7 @@ function createWindow(): void {
 // Get current connection status for heartbeat
 function getConnections() {
   const obsStatus = obsService.getStatus();
+  const vmixStatus = vmixService.getStatus();
   return {
     obs: {
       connected: obsStatus.connected,
@@ -78,7 +81,12 @@ function getConnections() {
       host: obsStatus.host,
       port: obsStatus.port
     },
-    vmix: { connected: false }
+    vmix: {
+      connected: vmixStatus.connected,
+      version: vmixStatus.version,
+      host: vmixStatus.host,
+      port: vmixStatus.port
+    }
   };
 }
 
@@ -256,6 +264,147 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
   }
 }
 
+// Handle vMix commands from Smart Panel
+async function handleVMixCommand(cmd: CommandPayload): Promise<void> {
+  const requestId = cmd.request_id;
+  const responseChannel = cmd.response_channel;
+
+  try {
+    switch (cmd.action) {
+      case 'vmix_connect': {
+        const host = (cmd.params.host as string) || 'localhost';
+        const port = (cmd.params.port as number) || 8088;
+
+        const result = await vmixService.connect({ host, port });
+        await supabaseService.sendResponse(requestId!, {
+          success: result.connected,
+          data: result.connected ? { version: result.version } : undefined,
+          error: result.error || null
+        }, responseChannel);
+        break;
+      }
+
+      case 'vmix_get_state': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        const state = await vmixService.getState();
+        await supabaseService.sendResponse(requestId!, {
+          success: true,
+          data: state
+        }, responseChannel);
+        break;
+      }
+
+      case 'vmix_show_overlay': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        const { overlayNumber, inputNumber } = cmd.params as any;
+        await vmixService.showOverlay(overlayNumber, inputNumber);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'vmix_hide_overlay': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        const { overlayNumber: ovNum } = cmd.params as any;
+        await vmixService.hideOverlay(ovNum);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'vmix_set_text': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        const { input, fieldName, value } = cmd.params as any;
+        await vmixService.setText(input, fieldName, value);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'vmix_cut': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        const { inputNumber: cutInput } = cmd.params as any;
+        await vmixService.cut(cutInput);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'vmix_fade': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        const { duration, inputNumber: fadeInput } = cmd.params as any;
+        await vmixService.fade(duration, fadeInput);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'vmix_start_streaming': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        await vmixService.startStreaming();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'vmix_stop_streaming': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        await vmixService.stopStreaming();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'vmix_start_recording': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        await vmixService.startRecording();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'vmix_stop_recording': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        await vmixService.stopRecording();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      default:
+        await supabaseService.sendError(requestId!, `Unknown action: ${cmd.action}`, responseChannel);
+        break;
+    }
+  } catch (error) {
+    const errorMsg = (error as Error).message;
+    logger.error(`[vMix] Command failed: ${cmd.action} - ${errorMsg}`);
+    if (requestId) {
+      await supabaseService.sendError(requestId, errorMsg, responseChannel);
+    }
+  }
+}
+
 // Handle all commands from Smart Panel
 function handleCommand(cmd: CommandPayload): void {
   logger.info(`[Command] Received: ${cmd.action}`);
@@ -266,12 +415,9 @@ function handleCommand(cmd: CommandPayload): void {
     return;
   }
 
-  // vMix commands (future)
+  // vMix commands
   if (cmd.action.startsWith('vmix_')) {
-    logger.warn('[vMix] Not yet implemented');
-    if (cmd.request_id) {
-      supabaseService.sendError(cmd.request_id, 'vMix not yet implemented');
-    }
+    handleVMixCommand(cmd);
     return;
   }
 }
@@ -285,6 +431,7 @@ function initializeApp(): void {
 
   supabaseService = new SupabaseService(logger);
   obsService = new OBSService(logger);
+  vmixService = new VMixService(logger);
 
   // Auto-connect to OBS if configured
   const config = configManager.get();
@@ -294,6 +441,15 @@ function initializeApp(): void {
       host: config.obs.host,
       port: config.obs.port || 4455,
       password: config.obs.password
+    });
+  }
+
+  // Auto-connect to vMix if configured
+  if (config.vmix?.enabled && config.vmix.host) {
+    logger.info('[vMix] Auto-connecting with saved config...');
+    vmixService.connect({
+      host: config.vmix.host,
+      port: config.vmix.httpPort || 8088
     });
   }
 
@@ -402,10 +558,28 @@ function setupIpcHandlers(): void {
     return { connected: status.connected, version: status.version };
   });
 
-  // vMix Connection (placeholder)
-  ipcMain.handle('test-vmix-connection', async (_event, config: { host: string; port: number }): Promise<{ success: boolean; error?: string }> => {
-    logger.info('[vMix] Testing connection...', config);
-    return { success: false, error: 'vMix integration not yet implemented' };
+  // vMix Connection
+  ipcMain.handle('test-vmix-connection', async (_event, config: { host: string; port: number }): Promise<{ success: boolean; error?: string; version?: string }> => {
+    logger.info(`[vMix] Testing connection to ${config.host}:${config.port}...`);
+    const result = await vmixService.connect({
+      host: config.host,
+      port: config.port
+    });
+
+    if (result.connected) {
+      return { success: true, version: result.version };
+    }
+    return { success: false, error: result.error };
+  });
+
+  ipcMain.handle('disconnect-vmix', async (): Promise<void> => {
+    logger.info('[vMix] Disconnecting...');
+    await vmixService.disconnect();
+  });
+
+  ipcMain.handle('get-vmix-status', (): { connected: boolean; version?: string } => {
+    const status = vmixService.getStatus();
+    return { connected: status.connected, version: status.version };
   });
 }
 
@@ -435,6 +609,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', async () => {
   logger.info('Shutting down...');
   await obsService.disconnect();
+  await vmixService.disconnect();
   await supabaseService.disconnect();
   logger.info('Goodbye!');
 });
