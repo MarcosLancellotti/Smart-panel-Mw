@@ -1,52 +1,77 @@
 {
-    "name": "smart-panel-connector",
-    "version": "0.1.0",
-    "description": "Local middleware for Smart Panel - Bridge between cloud and OBS/vMix",
-    "main": "build/index.js",
-    "bin": "build/index.js",
-    "scripts": {
-      "dev": "tsx watch src/index.ts",
-      "build": "tsc",
-      "build:exe": "npm run build && pkg . --targets node18-win-x64 --output dist/smart-panel-connector.exe",
-      "build:installer": "node scripts/build-installer.js",
-      "start": "node build/index.js"
+  "name": "smart-panel-connector",
+  "version": "0.1.0",
+  "description": "Local middleware for Smart Panel - Bridge between cloud and OBS/vMix",
+  "main": "build/main/main.js",
+  "scripts": {
+    "prebuild": "node -e \"require('fs').rmSync('build', {recursive:true, force:true})\"",
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "node -e \"const fs=require('fs');fs.mkdirSync('build/renderer',{recursive:true});fs.copyFileSync('src/renderer/index.html','build/renderer/index.html');fs.copyFileSync('src/renderer/styles.css','build/renderer/styles.css');fs.copyFileSync('assets/logo.jpeg','build/renderer/logo.jpeg');\"",
+    "dev": "npm run build && electron .",
+    "dev:watch": "concurrently \"tsc -w\" \"nodemon --watch build -e js --exec electron .\"",
+    "start": "electron .",
+    "build:exe": "npm run build && electron-builder --win",
+    "build:mac": "npm run build && electron-builder --mac"
+  },
+  "keywords": [
+    "broadcast",
+    "obs",
+    "vmix",
+    "graphics",
+    "middleware",
+    "electron"
+  ],
+  "author": "Smart Panel",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.89.0",
+    "axios": "^1.6.0",
+    "chokidar": "^3.5.3",
+    "dotenv": "^16.3.1",
+    "obs-websocket-js": "^5.0.5",
+    "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1",
+    "ws": "^8.14.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/ws": "^8.5.9",
+    "concurrently": "^8.2.2",
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1",
+    "typescript": "^5.3.0"
+  },
+  "build": {
+    "appId": "app.smart-panel.connector",
+    "productName": "Smart Panel Middleware",
+    "directories": {
+      "output": "dist"
     },
-    "keywords": [
-      "broadcast",
-      "obs",
-      "vmix",
-      "graphics",
-      "middleware"
+    "files": [
+      "build/**/*",
+      "node_modules/**/*"
     ],
-    "author": "Smart Panel",
-    "license": "UNLICENSED",
-    "dependencies": {
-      "obs-websocket-js": "^5.0.5",
-      "ws": "^8.14.0",
-      "axios": "^1.6.0",
-      "winston": "^3.11.0",
-      "winston-daily-rotate-file": "^4.7.1",
-      "inquirer": "^9.2.12",
-      "chalk": "^5.3.0",
-      "xlsx": "^0.18.5",
-      "chokidar": "^3.5.3",
-      "dotenv": "^16.3.1"
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets",
+        "filter": ["**/*"]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.icns"
     },
-    "devDependencies": {
-      "@types/node": "^20.10.0",
-      "@types/ws": "^8.5.9",
-      "@types/inquirer": "^9.0.7",
-      "typescript": "^5.3.0",
-      "tsx": "^4.6.0",
-      "pkg": "^5.8.1"
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns"
     },
-    "pkg": {
-      "targets": [
-        "node18-win-x64"
-      ],
-      "outputPath": "dist",
-      "assets": [
-        "node_modules/obs-websocket-js/**/*"
-      ]
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
+}

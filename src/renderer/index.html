@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <title>Smart Panel Middleware</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="logo">
+        <img src="logo.jpeg" alt="Smart Panel" class="logo-img">
+        <h1>Smart Panel Middleware</h1>
+      </div>
+      <span class="version" id="version">v0.1.0</span>
+    </header>
+
+    <!-- Navigation -->
+    <nav class="nav">
+      <button class="nav-btn active" data-tab="status">Status</button>
+      <button class="nav-btn" data-tab="config">Configuration</button>
+      <button class="nav-btn" data-tab="logs">Logs</button>
+    </nav>
+
+    <!-- Content -->
+    <main class="content">
+      <!-- Status Tab -->
+      <section class="tab-content active" id="tab-status">
+        <div class="status-grid">
+          <!-- Smart Panel Connection -->
+          <div class="status-card">
+            <div class="status-header">
+              <span class="status-icon">☁️</span>
+              <h3>Smart Panel Cloud</h3>
+            </div>
+            <div class="status-indicator disconnected" id="status-smartpanel">
+              <span class="dot"></span>
+              <span class="text">Disconnected</span>
+            </div>
+            <p class="status-detail" id="detail-smartpanel">API key not configured</p>
+          </div>
+
+          <!-- OBS Connection -->
+          <div class="status-card">
+            <div class="status-header">
+              <span class="status-icon">🎬</span>
+              <h3>OBS Studio</h3>
+            </div>
+            <div class="status-indicator disconnected" id="status-obs">
+              <span class="dot"></span>
+              <span class="text">Disabled</span>
+            </div>
+            <p class="status-detail" id="detail-obs">Enable in configuration</p>
+          </div>
+
+          <!-- vMix Connection -->
+          <div class="status-card">
+            <div class="status-header">
+              <span class="status-icon">🎥</span>
+              <h3>vMix</h3>
+            </div>
+            <div class="status-indicator disconnected" id="status-vmix">
+              <span class="dot"></span>
+              <span class="text">Disabled</span>
+            </div>
+            <p class="status-detail" id="detail-vmix">Enable in configuration</p>
+          </div>
+        </div>
+
+        <!-- First Run Message -->
+        <div class="first-run-message" id="first-run-message" style="display: none;">
+          <h2>👋 Welcome to Smart Panel Middleware!</h2>
+          <p>To get started, you need to configure your API Key.</p>
+          <ol>
+            <li>Go to <a href="#" id="link-api-keys">smart-panel.app/integrations</a> and generate a key</li>
+            <li>Go to the <strong>Configuration</strong> tab</li>
+            <li>Paste your API Key and click <strong>Verify</strong></li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- Configuration Tab -->
+      <section class="tab-content" id="tab-config">
+        <form id="config-form">
+          <!-- Smart Panel Section -->
+          <div class="config-section">
+            <h3>☁️ Smart Panel Cloud</h3>
+            <div class="form-group">
+              <label for="apiKey">API Key</label>
+              <div class="input-with-button">
+                <input type="password" id="apiKey" placeholder="sp_XXXXXXXXXXXX">
+                <button type="button" class="btn btn-secondary" id="btn-verify-key">Verify</button>
+              </div>
+              <small>Get your API key from <a href="#" id="link-get-key">smart-panel.app/integrations</a></small>
+            </div>
+            <div class="api-key-status" id="api-key-status" style="display: none;">
+              <span class="status-badge" id="key-status-badge">Valid</span>
+              <span class="status-text" id="key-status-text">Connected to company</span>
+            </div>
+          </div>
+
+          <!-- OBS Section -->
+          <div class="config-section">
+            <h3>🎬 OBS Studio</h3>
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" id="obsEnabled">
+                Enable OBS integration
+              </label>
+            </div>
+            <div class="obs-settings" id="obs-settings">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="obsHost">Host</label>
+                  <input type="text" id="obsHost" value="localhost">
+                </div>
+                <div class="form-group">
+                  <label for="obsPort">Port</label>
+                  <input type="number" id="obsPort" value="4455">
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="obsPassword">Password (optional)</label>
+                <input type="password" id="obsPassword" placeholder="WebSocket password">
+              </div>
+              <button type="button" class="btn btn-secondary" id="btn-test-obs">Test Connection</button>
+            </div>
+          </div>
+
+          <!-- vMix Section -->
+          <div class="config-section">
+            <h3>🎥 vMix</h3>
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" id="vmixEnabled">
+                Enable vMix integration
+              </label>
+            </div>
+            <div class="vmix-settings" id="vmix-settings">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="vmixHost">Host</label>
+                  <input type="text" id="vmixHost" value="localhost">
+                </div>
+                <div class="form-group">
+                  <label for="vmixHttpPort">HTTP Port</label>
+                  <input type="number" id="vmixHttpPort" value="8088">
+                </div>
+                <div class="form-group">
+                  <label for="vmixTcpPort">TCP Port</label>
+                  <input type="number" id="vmixTcpPort" value="8099">
+                </div>
+              </div>
+              <button type="button" class="btn btn-secondary" id="btn-test-vmix">Test Connection</button>
+            </div>
+          </div>
+
+          <!-- Save Button -->
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary" id="btn-save">Save Configuration</button>
+            <span class="save-status" id="save-status"></span>
+          </div>
+        </form>
+      </section>
+
+      <!-- Logs Tab -->
+      <section class="tab-content" id="tab-logs">
+        <div class="logs-header">
+          <h3>📋 Recent Logs</h3>
+          <button class="btn btn-secondary" id="btn-refresh-logs">Refresh</button>
+        </div>
+        <div class="logs-path" id="logs-path">Loading...</div>
+        <pre class="logs-container" id="logs-container">Loading logs...</pre>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <span>Smart Panel Middleware © 2024</span>
+      <a href="#" id="link-help">Help</a>
+    </footer>
+  </div>
+
+  <script>
+    // Tab navigation
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // Initialize app
+    async function init() {
+      // Get version
+      const version = await window.electronAPI.getVersion();
+      document.getElementById('version').textContent = 'v' + version;
+
+      // Check first run
+      const isFirstRun = await window.electronAPI.isFirstRun();
+      if (isFirstRun) {
+        document.getElementById('first-run-message').style.display = 'block';
+      }
+
+      // Load config
+      await loadConfig();
+
+      // Load logs path
+      const logsPath = await window.electronAPI.getLogsPath();
+      document.getElementById('logs-path').textContent = 'Logs: ' + logsPath;
+
+      // Load logs
+      await refreshLogs();
+
+      // Update status cards
+      updateStatus();
+    }
+
+    async function loadConfig() {
+      const config = await window.electronAPI.getConfig();
+
+      // Smart Panel - only API Key now
+      document.getElementById('apiKey').value = config.smartPanel.apiKey || '';
+
+      // OBS
+      document.getElementById('obsEnabled').checked = config.obs?.enabled || false;
+      document.getElementById('obsHost').value = config.obs?.host || 'localhost';
+      document.getElementById('obsPort').value = config.obs?.port || 4455;
+      document.getElementById('obsPassword').value = config.obs?.password || '';
+      toggleObsSettings();
+
+      // vMix
+      document.getElementById('vmixEnabled').checked = config.vmix?.enabled || false;
+      document.getElementById('vmixHost').value = config.vmix?.host || 'localhost';
+      document.getElementById('vmixHttpPort').value = config.vmix?.httpPort || 8088;
+      document.getElementById('vmixTcpPort').value = config.vmix?.tcpPort || 8099;
+      toggleVmixSettings();
+    }
+
+    function toggleObsSettings() {
+      const enabled = document.getElementById('obsEnabled').checked;
+      document.getElementById('obs-settings').style.display = enabled ? 'block' : 'none';
+    }
+
+    function toggleVmixSettings() {
+      const enabled = document.getElementById('vmixEnabled').checked;
+      document.getElementById('vmix-settings').style.display = enabled ? 'block' : 'none';
+    }
+
+    async function updateStatus() {
+      const config = await window.electronAPI.getConfig();
+
+      // Smart Panel status
+      const spStatus = document.getElementById('status-smartpanel');
+      const spDetail = document.getElementById('detail-smartpanel');
+      if (config.smartPanel.apiKey) {
+        spStatus.className = 'status-indicator connecting';
+        spStatus.querySelector('.text').textContent = 'Ready';
+        spDetail.textContent = 'API key configured';
+      } else {
+        spStatus.className = 'status-indicator disconnected';
+        spStatus.querySelector('.text').textContent = 'Not configured';
+        spDetail.textContent = 'Add API key in Configuration';
+      }
+
+      // OBS status
+      const obsStatus = document.getElementById('status-obs');
+      const obsDetail = document.getElementById('detail-obs');
+      if (config.obs?.enabled) {
+        obsStatus.className = 'status-indicator connecting';
+        obsStatus.querySelector('.text').textContent = 'Ready';
+        obsDetail.textContent = config.obs.host + ':' + config.obs.port;
+      } else {
+        obsStatus.className = 'status-indicator disconnected';
+        obsStatus.querySelector('.text').textContent = 'Disabled';
+        obsDetail.textContent = 'Enable in Configuration';
+      }
+
+      // vMix status
+      const vmixStatus = document.getElementById('status-vmix');
+      const vmixDetail = document.getElementById('detail-vmix');
+      if (config.vmix?.enabled) {
+        vmixStatus.className = 'status-indicator connecting';
+        vmixStatus.querySelector('.text').textContent = 'Ready';
+        vmixDetail.textContent = config.vmix.host + ':' + config.vmix.httpPort;
+      } else {
+        vmixStatus.className = 'status-indicator disconnected';
+        vmixStatus.querySelector('.text').textContent = 'Disabled';
+        vmixDetail.textContent = 'Enable in Configuration';
+      }
+    }
+
+    async function refreshLogs() {
+      const logs = await window.electronAPI.getRecentLogs(50);
+      document.getElementById('logs-container').textContent = logs.join('\n');
+    }
+
+    // Event listeners
+    document.getElementById('obsEnabled').addEventListener('change', toggleObsSettings);
+    document.getElementById('vmixEnabled').addEventListener('change', toggleVmixSettings);
+    document.getElementById('btn-refresh-logs').addEventListener('click', refreshLogs);
+
+    // External links
+    document.getElementById('link-api-keys').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.electronAPI.openExternal('https://smart-panel.app/integrations');
+    });
+    document.getElementById('link-get-key').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.electronAPI.openExternal('https://smart-panel.app/integrations');
+    });
+    document.getElementById('link-help').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.electronAPI.openExternal('https://smart-panel.app/help');
+    });
+
+    // Verify API Key
+    document.getElementById('btn-verify-key').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-verify-key');
+      const apiKey = document.getElementById('apiKey').value.trim();
+      const statusDiv = document.getElementById('api-key-status');
+      const statusBadge = document.getElementById('key-status-badge');
+      const statusText = document.getElementById('key-status-text');
+
+      if (!apiKey) {
+        statusDiv.style.display = 'block';
+        statusBadge.className = 'status-badge error';
+        statusBadge.textContent = 'Error';
+        statusText.textContent = 'Please enter an API key';
+        return;
+      }
+
+      btn.textContent = 'Verifying...';
+      btn.disabled = true;
+
+      const result = await window.electronAPI.verifyApiKey(apiKey);
+
+      statusDiv.style.display = 'block';
+
+      if (result.valid) {
+        statusBadge.className = 'status-badge success';
+        statusBadge.textContent = 'Valid';
+        statusText.textContent = result.name ? `Connected: ${result.name}` : 'Connected successfully';
+        btn.textContent = '✓ Verified';
+      } else {
+        statusBadge.className = 'status-badge error';
+        statusBadge.textContent = 'Invalid';
+        statusText.textContent = result.error || 'Could not verify key';
+        btn.textContent = 'Verify';
+      }
+
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Verify'; }, 3000);
+    });
+
+    // Test connections
+    document.getElementById('btn-test-obs').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-test-obs');
+      btn.textContent = 'Testing...';
+      btn.disabled = true;
+
+      const result = await window.electronAPI.testOBSConnection({
+        host: document.getElementById('obsHost').value,
+        port: parseInt(document.getElementById('obsPort').value),
+        password: document.getElementById('obsPassword').value
+      });
+
+      btn.textContent = result.success ? '✓ Connected!' : '✗ ' + result.error;
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Test Connection'; }, 3000);
+    });
+
+    document.getElementById('btn-test-vmix').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-test-vmix');
+      btn.textContent = 'Testing...';
+      btn.disabled = true;
+
+      const result = await window.electronAPI.testVMixConnection({
+        host: document.getElementById('vmixHost').value,
+        port: parseInt(document.getElementById('vmixHttpPort').value)
+      });
+
+      btn.textContent = result.success ? '✓ Connected!' : '✗ ' + result.error;
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Test Connection'; }, 3000);
+    });
+
+    // Save config
+    document.getElementById('config-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const saveBtn = document.getElementById('btn-save');
+      const saveStatus = document.getElementById('save-status');
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving...';
+
+      const updates = {
+        smartPanel: {
+          apiKey: document.getElementById('apiKey').value
+        },
+        obs: {
+          enabled: document.getElementById('obsEnabled').checked,
+          host: document.getElementById('obsHost').value,
+          port: parseInt(document.getElementById('obsPort').value),
+          password: document.getElementById('obsPassword').value
+        },
+        vmix: {
+          enabled: document.getElementById('vmixEnabled').checked,
+          host: document.getElementById('vmixHost').value,
+          httpPort: parseInt(document.getElementById('vmixHttpPort').value),
+          tcpPort: parseInt(document.getElementById('vmixTcpPort').value)
+        }
+      };
+
+      const success = await window.electronAPI.saveConfig(updates);
+
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Configuration';
+      saveStatus.textContent = success ? '✓ Saved!' : '✗ Error saving';
+      saveStatus.className = 'save-status ' + (success ? 'success' : 'error');
+
+      if (success) {
+        document.getElementById('first-run-message').style.display = 'none';
+        updateStatus();
+      }
+
+      setTimeout(() => { saveStatus.textContent = ''; }, 3000);
+    });
+
+    // Start app
+    init();
+  </script>
+</body>
+</html>

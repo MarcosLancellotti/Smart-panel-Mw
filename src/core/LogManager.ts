@@ -5,7 +5,7 @@ import fs from 'fs';
 import { getLogsPath } from '../utils/paths';
 
 export class LogManager {
-  private logger: winston.Logger;
+  private logger!: winston.Logger;
   private logsPath: string;
 
   constructor() {
