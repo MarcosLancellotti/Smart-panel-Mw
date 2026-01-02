@@ -35,14 +35,6 @@ export class LogManager {
       level: process.env.LOG_LEVEL || 'info',
       format: logFormat,
       transports: [
-        // Console output (colored)
-        new winston.transports.Console({
-          format: winston.format.combine(
-            winston.format.colorize(),
-            logFormat
-          )
-        }),
-
         // Combined log (info + error)
         new DailyRotateFile({
           filename: path.join(this.logsPath, 'app-%DATE%.log'),
@@ -115,7 +107,7 @@ export class LogManager {
     return this.logsPath;
   }
 
-  // Read recent logs (last N lines)
+  // Read recent logs (last N lines) - newest first
   async getRecentLogs(lines: number = 50): Promise<string[]> {
     const logFile = path.join(
       this.logsPath,
@@ -128,6 +120,6 @@ export class LogManager {
 
     const content = fs.readFileSync(logFile, 'utf-8');
     const allLines = content.split('\n').filter(line => line.trim());
-    return allLines.slice(-lines);
+    return allLines.slice(-lines).reverse();
   }
 }

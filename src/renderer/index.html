@@ -158,6 +158,18 @@
             </div>
           </div>
 
+          <!-- Service Mode Section -->
+          <div class="config-section">
+            <h3>⚙️ Service Mode</h3>
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" id="runAsService">
+                Run as background service
+              </label>
+              <small>When enabled, closing the window minimizes to system tray instead of quitting</small>
+            </div>
+          </div>
+
           <!-- Save Button -->
           <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="btn-save">Save Configuration</button>
@@ -252,6 +264,9 @@
       document.getElementById('vmixHttpPort').value = config.vmix?.httpPort || 8088;
       document.getElementById('vmixTcpPort').value = config.vmix?.tcpPort || 8099;
       toggleVmixSettings();
+
+      // Service Mode
+      document.getElementById('runAsService').checked = config.runAsService || false;
     }
 
     function toggleObsSettings() {
@@ -330,9 +345,9 @@
     async function refreshLogs() {
       const logs = await window.electronAPI.getRecentLogs(100);
       document.getElementById('logs-container').textContent = logs.join('\n');
-      // Auto-scroll to bottom
+      // Auto-scroll to top (newest logs first)
       const container = document.getElementById('logs-container');
-      container.scrollTop = container.scrollHeight;
+      container.scrollTop = 0;
     }
 
     // Event listeners
@@ -449,7 +464,8 @@
           host: document.getElementById('vmixHost').value,
           httpPort: parseInt(document.getElementById('vmixHttpPort').value),
           tcpPort: parseInt(document.getElementById('vmixTcpPort').value)
-        }
+        },
+        runAsService: document.getElementById('runAsService').checked
       };
 
       const success = await window.electronAPI.saveConfig(updates);

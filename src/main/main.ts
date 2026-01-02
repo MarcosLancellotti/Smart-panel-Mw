@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, nativeImage, Tray, Menu } from 'electron';
 import path from 'path';
 import { LogManager } from '../core/LogManager';
 import { ConfigManager } from '../core/ConfigManager';
@@ -18,6 +18,7 @@ function getIconPath(): string {
 }
 
 let mainWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
 let logger: LogManager;
 let configManager: ConfigManager;
 let supabaseService: SupabaseService;
@@ -26,6 +27,54 @@ let vmixService: VMixService;
 
 // Check for headless/service mode
 const isHeadless = process.argv.includes('--headless') || process.argv.includes('--service');
+
+function createTray(): void {
+  const iconPath = getIconPath();
+
+  try {
+    const icon = nativeImage.createFromPath(iconPath);
+    tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: 'Show Window',
+        click: () => {
+          if (mainWindow) {
+            mainWindow.show();
+            mainWindow.focus();
+          } else {
+            createWindow();
+          }
+        }
+      },
+      { type: 'separator' },
+      {
+        label: 'Quit',
+        click: () => {
+          app.quit();
+        }
+      }
+    ]);
+
+    tray.setToolTip('Smart Panel Middleware');
+    tray.setContextMenu(contextMenu);
+
+    tray.on('click', () => {
+      if (mainWindow) {
+        if (mainWindow.isVisible()) {
+          mainWindow.hide();
+        } else {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }
+    });
+
+    logger.info('[Tray] System tray created');
+  } catch (e) {
+    logger.warn('[Tray] Could not create system tray');
+  }
+}
 
 function createWindow(): void {
   const iconPath = getIconPath();
@@ -64,8 +113,26 @@ function createWindow(): void {
   mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+    const config = configManager.get();
+    // If runAsService is enabled, start minimized to tray
+    if (config.runAsService) {
+      logger.info('Running as service - starting minimized');
+    } else {
+      mainWindow?.center();
+      mainWindow?.show();
+      mainWindow?.focus();
+    }
     logger.info('Main window ready');
+  });
+
+  // Minimize to tray instead of closing (if runAsService is enabled)
+  mainWindow.on('close', (event) => {
+    const config = configManager.get();
+    if (config.runAsService && !(app as any).isQuitting) {
+      event.preventDefault();
+      mainWindow?.hide();
+      logger.info('Window hidden to tray');
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -106,6 +173,8 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
         const password = cmd.params.password as string | undefined;
 
         const result = await obsService.connect({ host, port, password });
+        // Update connection status in Smart Panel
+        await supabaseService.updateConnectionStatus(getConnections());
         await supabaseService.sendResponse(requestId!, {
           success: result.connected,
           data: result.connected ? { version: result.version } : undefined,
@@ -116,23 +185,37 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
 
       case 'obs_get_scenes': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         const sceneList = await obsService.getScenes();
         await supabaseService.sendResponse(requestId!, {
           success: true,
           data: {
-            scenes: sceneList.scenes.map((s: any) => ({ name: s.sceneName, index: s.sceneIndex })),
+            scenes: sceneList.scenes.map((s: any) => ({ sceneName: s.sceneName, sceneIndex: s.sceneIndex })),
             currentScene: sceneList.currentProgramSceneName
           }
         }, responseChannel);
         break;
       }
 
+      case 'obs_get_current_scene': {
+        if (!obsService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
+          break;
+        }
+        const currentScene = await obsService.getCurrentScene();
+        await supabaseService.sendResponse(requestId!, {
+          success: true,
+          data: { sceneName: currentScene }
+        }, responseChannel);
+        break;
+      }
+
+      case 'obs_switch_scene':
       case 'obs_set_scene': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         const sceneName = (cmd.params.sceneName || cmd.params.scene) as string;
@@ -146,7 +229,7 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
 
       case 'obs_get_sources': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         const sceneForSources = (cmd.params.sceneName || cmd.params.scene) as string;
@@ -158,9 +241,33 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
         break;
       }
 
+      case 'obs_show_source': {
+        if (!obsService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
+          break;
+        }
+        const { sceneName, sourceName } = cmd.params as any;
+        const sceneItemId = await obsService.getSceneItemId(sceneName, sourceName);
+        await obsService.setSourceVisibility(sceneName, sceneItemId, true);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'obs_hide_source': {
+        if (!obsService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
+          break;
+        }
+        const { sceneName: hideScene, sourceName: hideSource } = cmd.params as any;
+        const hideItemId = await obsService.getSceneItemId(hideScene, hideSource);
+        await obsService.setSourceVisibility(hideScene, hideItemId, false);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
       case 'obs_source_visibility': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         const { sceneName, scene, sceneItemId, sourceId, visible, sceneItemEnabled } = cmd.params as any;
@@ -174,12 +281,15 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
 
       case 'obs_toggle_source': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
-        const { sceneName: sn, scene: sc, sceneItemId: siId, sourceId: srcId } = cmd.params as any;
+        const { sceneName: sn, scene: sc, sceneItemId: siId, sourceId: srcId, sourceName: toggleSrcName } = cmd.params as any;
         const toggleScene = sn || sc;
-        const toggleId = siId || srcId;
+        let toggleId = siId || srcId;
+        if (!toggleId && toggleSrcName) {
+          toggleId = await obsService.getSceneItemId(toggleScene, toggleSrcName);
+        }
         const newState = await obsService.toggleSource(toggleScene, toggleId);
         await supabaseService.sendResponse(requestId!, {
           success: true,
@@ -188,9 +298,42 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
         break;
       }
 
+      case 'obs_set_text': {
+        if (!obsService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
+          break;
+        }
+        const { sourceName: textSource, text } = cmd.params as any;
+        await obsService.setText(textSource, text);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'obs_refresh_browser': {
+        if (!obsService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
+          break;
+        }
+        const { sourceName: browserSource } = cmd.params as any;
+        await obsService.refreshBrowser(browserSource);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'obs_set_browser_url': {
+        if (!obsService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
+          break;
+        }
+        const { sourceName: urlSource, url } = cmd.params as any;
+        await obsService.setBrowserUrl(urlSource, url);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
       case 'obs_start_streaming': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         await obsService.startStreaming();
@@ -200,7 +343,7 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
 
       case 'obs_stop_streaming': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         await obsService.stopStreaming();
@@ -210,7 +353,7 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
 
       case 'obs_start_recording': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         await obsService.startRecording();
@@ -220,7 +363,7 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
 
       case 'obs_stop_recording': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         await obsService.stopRecording();
@@ -228,9 +371,10 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
         break;
       }
 
+      case 'obs_get_streaming_status':
       case 'obs_get_stream_status': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         const streamStatus = await obsService.getStreamStatus();
@@ -243,7 +387,7 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
 
       case 'obs_get_record_status': {
         if (!obsService.isConnected()) {
-          await supabaseService.sendError(requestId!, 'OBS not connected', responseChannel);
+          await supabaseService.sendError(requestId!, 'OBS WebSocket not connected', responseChannel);
           break;
         }
         const recordStatus = await obsService.getRecordStatus();
@@ -255,7 +399,7 @@ async function handleOBSCommand(cmd: CommandPayload): Promise<void> {
       }
 
       default:
-        await supabaseService.sendError(requestId!, `Unknown action: ${cmd.action}`, responseChannel);
+        await supabaseService.sendError(requestId!, `Unknown command: ${cmd.action}`, responseChannel);
         break;
     }
   } catch (error) {
@@ -279,6 +423,8 @@ async function handleVMixCommand(cmd: CommandPayload): Promise<void> {
         const port = (cmd.params.port as number) || 8088;
 
         const result = await vmixService.connect({ host, port });
+        // Update connection status in Smart Panel
+        await supabaseService.updateConnectionStatus(getConnections());
         await supabaseService.sendResponse(requestId!, {
           success: result.connected,
           data: result.connected ? { version: result.version } : undefined,
@@ -305,8 +451,9 @@ async function handleVMixCommand(cmd: CommandPayload): Promise<void> {
           await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
           break;
         }
-        const { overlayNumber, inputNumber } = cmd.params as any;
-        await vmixService.showOverlay(overlayNumber, inputNumber);
+        const { overlayNumber, inputKey, inputNumber } = cmd.params as any;
+        const input = inputKey || inputNumber;
+        await vmixService.showOverlay(overlayNumber, input);
         await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
         break;
       }
@@ -322,13 +469,31 @@ async function handleVMixCommand(cmd: CommandPayload): Promise<void> {
         break;
       }
 
+      case 'vmix_transition': {
+        if (!vmixService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
+          break;
+        }
+        const { inputKey: transInput, transition, duration } = cmd.params as any;
+        if (transition === 'Cut' || !transition) {
+          await vmixService.cut(transInput);
+        } else {
+          await vmixService.fade(duration || 1000, transInput);
+        }
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
       case 'vmix_set_text': {
         if (!vmixService.isConnected()) {
           await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
           break;
         }
-        const { input, fieldName, value } = cmd.params as any;
-        await vmixService.setText(input, fieldName, value);
+        const { inputKey, input, selectedName, fieldName, textValue, value } = cmd.params as any;
+        const inputId = inputKey || input;
+        const field = selectedName || fieldName;
+        const text = textValue || value;
+        await vmixService.setText(inputId, field, text);
         await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
         break;
       }
@@ -338,8 +503,8 @@ async function handleVMixCommand(cmd: CommandPayload): Promise<void> {
           await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
           break;
         }
-        const { inputNumber: cutInput } = cmd.params as any;
-        await vmixService.cut(cutInput);
+        const { inputKey: cutKey, inputNumber: cutInput } = cmd.params as any;
+        await vmixService.cut(cutKey || cutInput);
         await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
         break;
       }
@@ -349,8 +514,8 @@ async function handleVMixCommand(cmd: CommandPayload): Promise<void> {
           await supabaseService.sendError(requestId!, 'vMix not connected', responseChannel);
           break;
         }
-        const { duration, inputNumber: fadeInput } = cmd.params as any;
-        await vmixService.fade(duration, fadeInput);
+        const { duration, inputKey: fadeKey, inputNumber: fadeInput } = cmd.params as any;
+        await vmixService.fade(duration, fadeKey || fadeInput);
         await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
         break;
       }
@@ -396,7 +561,7 @@ async function handleVMixCommand(cmd: CommandPayload): Promise<void> {
       }
 
       default:
-        await supabaseService.sendError(requestId!, `Unknown action: ${cmd.action}`, responseChannel);
+        await supabaseService.sendError(requestId!, `Unknown command: ${cmd.action}`, responseChannel);
         break;
     }
   } catch (error) {
@@ -626,10 +791,14 @@ function setupIpcHandlers(): void {
 // Set app name (for Mac menu bar)
 app.setName('Smart Panel Middleware');
 
+// Track if app is quitting (vs just hiding)
+(app as any).isQuitting = false;
+
 // App lifecycle
 app.whenReady().then(() => {
   initializeApp();
   setupIpcHandlers();
+  createTray();
 
   if (isHeadless) {
     logger.info('Running in headless/service mode - no GUI');
@@ -645,9 +814,10 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (isHeadless) {
-    // In headless mode, don't quit when no windows
-    logger.info('No windows - continuing in headless mode');
+  const config = configManager.get();
+  if (isHeadless || config.runAsService) {
+    // In service mode, don't quit when window is hidden
+    logger.info('Window closed - continuing as service');
     return;
   }
   logger.info('Application closing...');
@@ -657,6 +827,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', async () => {
+  (app as any).isQuitting = true;
   logger.info('Shutting down...');
   await obsService.disconnect();
   await vmixService.disconnect();

@@ -38,4 +38,5 @@ export interface SmartPanelConfig {
     vmix?: VMixConfig;
     dataSources?: DataSourceConfig[];
     settings: SettingsConfig;
+    runAsService?: boolean;
   }

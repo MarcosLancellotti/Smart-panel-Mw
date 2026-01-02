@@ -9,11 +9,15 @@ import { LogManager } from '../core/LogManager';
 const SUPABASE_URL = 'https://vlxgdsqawtscusdkxbyv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZseGdkc3Fhd3RzY3VzZGt4Ynl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzNzYzOTEsImV4cCI6MjA3ODk1MjM5MX0.1GZdjLooB4BwE-OSPj46Ju-IPTpvUyCB2GHMzlSngb8';
 
+const APP_VERSION = '0.3.0';
+
 export interface AuthResult {
   success: boolean;
+  middleware_id?: string;
   company_id?: string;
   api_key_id?: string;
   api_key_name?: string;
+  message?: string;
   error?: string;
 }
 
@@ -108,44 +112,60 @@ export class SupabaseService {
   }
 
   /**
-   * Step 1: Authenticate with API Key
+   * Authenticate with API Key using authenticate_middleware RPC
+   * Returns middleware_id directly
    */
   async authenticate(apiKey: string): Promise<AuthResult> {
     try {
       this.logger.info('[Supabase] Authenticating with API key...');
 
       const { data, error } = await this.supabase.rpc('authenticate_middleware', {
-        p_api_key: apiKey
+        p_api_key: apiKey,
+        p_machine_name: os.hostname(),
+        p_metadata: {
+          appVersion: APP_VERSION,
+          os: process.platform,
+          nodeVersion: process.version
+        }
       });
 
+      this.logger.info(`[Supabase] RPC response: ${JSON.stringify({ data, error })}`);
+
       if (error) {
-        this.logger.error('[Supabase] Auth error', error as Error);
+        this.logger.error(`[Supabase] Auth error: ${error.message}`, error as Error);
         return { success: false, error: error.message };
       }
 
-      if (data && data.success) {
+      if (!data) {
+        this.logger.error('[Supabase] Auth failed: No data returned from RPC');
+        return { success: false, error: 'No response from server' };
+      }
+
+      if (data.success) {
+        this.middlewareId = data.middleware_id;
         this.companyId = data.company_id;
-        this.apiKeyId = data.api_key_id;
-        this.apiKeyName = data.api_key_name;
+        this.apiKeyName = data.api_key_name || data.name;
 
         this.logger.info('[Supabase] Authenticated successfully', {
+          middlewareId: this.middlewareId,
           companyId: this.companyId,
-          apiKeyId: this.apiKeyId,
           name: this.apiKeyName
         });
 
         return {
           success: true,
+          middleware_id: data.middleware_id,
           company_id: data.company_id,
-          api_key_id: data.api_key_id,
-          api_key_name: data.api_key_name
+          api_key_name: data.api_key_name || data.name
         };
       }
 
-      return { success: false, error: data?.error || 'Authentication failed' };
+      this.logger.error(`[Supabase] Auth failed: ${data.error || 'Unknown error'}`);
+      return { success: false, error: data.error || 'Authentication failed' };
     } catch (err) {
-      this.logger.error('[Supabase] Auth exception', err as Error);
-      return { success: false, error: 'Connection error' };
+      const errorMsg = (err as Error).message || 'Unknown error';
+      this.logger.error(`[Supabase] Auth exception: ${errorMsg}`, err as Error);
+      return { success: false, error: `Connection error: ${errorMsg}` };
     }
   }
 
@@ -228,18 +248,26 @@ export class SupabaseService {
     });
 
     // Listen specifically for command events
-    this.channel.on('broadcast', { event: 'command' }, (payload) => {
+    this.channel.on('broadcast', { event: 'command' }, async (payload) => {
       this.logger.info(`📥 COMMAND payload: ${JSON.stringify(payload)}`);
       const cmd = payload.payload as CommandPayload;
       this.logger.info(`📥 Command action: ${cmd.action}`);
 
-      // Handle ping internally
+      // Handle ping internally - send both pong AND response to response_channel
       if (cmd.action === 'ping') {
         this.logger.info('🏓 Responding with pong...');
+        // 1. Send pong event on main channel (for latency measurement)
         this.sendPong(cmd.request_id);
+        // 2. Send response to response_channel
+        if (cmd.response_channel) {
+          await this.sendResponse(cmd.request_id!, {
+            success: true,
+            data: { pong: true, timestamp: Date.now() }
+          }, cmd.response_channel);
+        }
       }
 
-      // Forward to callback
+      // Forward to callback for other commands
       if (this.onCommandCallback) {
         this.onCommandCallback(cmd);
       }
@@ -404,20 +432,17 @@ export class SupabaseService {
   }
 
   /**
-   * Send heartbeat update
+   * Send heartbeat update using update_middleware_status RPC
    */
   private async sendHeartbeat(connections: ConnectionStatus): Promise<void> {
-    if (!this.apiKeyId) return;
+    if (!this.middlewareId) return;
 
     try {
-      const { error } = await this.supabase
-        .from('middlewares')
-        .update({
-          last_seen_at: new Date().toISOString(),
-          status: 'online',
-          connections
-        })
-        .eq('api_key_id', this.apiKeyId);
+      const { error } = await this.supabase.rpc('update_middleware_status', {
+        p_middleware_id: this.middlewareId,
+        p_status: 'online',
+        p_connections: connections
+      });
 
       if (error) {
         this.logger.error('[Supabase] Heartbeat error', error as Error);
@@ -452,7 +477,7 @@ export class SupabaseService {
   }
 
   /**
-   * Step 5: Disconnect cleanly (set status offline)
+   * Disconnect cleanly (set status offline)
    */
   async disconnect(): Promise<void> {
     this.logger.info('[Supabase] Disconnecting...');
@@ -460,15 +485,13 @@ export class SupabaseService {
     this.stopHeartbeat();
     this.unsubscribe();
 
-    if (this.apiKeyId) {
+    if (this.middlewareId) {
       try {
-        await this.supabase
-          .from('middlewares')
-          .update({
-            status: 'offline',
-            last_seen_at: new Date().toISOString()
-          })
-          .eq('api_key_id', this.apiKeyId);
+        await this.supabase.rpc('update_middleware_status', {
+          p_middleware_id: this.middlewareId,
+          p_status: 'offline',
+          p_connections: {}
+        });
 
         this.logger.info('[Supabase] Status set to offline');
       } catch (err) {
@@ -479,6 +502,7 @@ export class SupabaseService {
     this.middlewareId = null;
     this.companyId = null;
     this.apiKeyId = null;
+    this.apiKeyName = null;
     this.logger.info('[Supabase] Disconnected');
   }
 
@@ -496,32 +520,50 @@ export class SupabaseService {
   }
 
   /**
-   * Full connect flow: authenticate → register → subscribe → heartbeat
+   * Full connect flow: authenticate → subscribe → heartbeat
+   * authenticate_middleware already creates/updates the middleware record
    */
   async connect(
     apiKey: string,
     getConnections: () => ConnectionStatus,
     onCommand?: (command: CommandPayload) => void
   ): Promise<{ success: boolean; error?: string }> {
-    // Step 1: Authenticate
+    // Step 1: Authenticate (also registers middleware)
     const auth = await this.authenticate(apiKey);
     if (!auth.success) {
       return { success: false, error: auth.error };
     }
 
-    // Step 2: Register middleware
-    const reg = await this.registerMiddleware();
-    if (!reg.success) {
-      return { success: false, error: reg.error };
-    }
-
-    // Step 3: Subscribe to realtime with command handler
+    // Step 2: Subscribe to realtime with command handler
     this.subscribeToCommands(onCommand);
 
-    // Step 4: Start heartbeat
+    // Step 3: Start heartbeat
     this.startHeartbeat(getConnections);
 
     return { success: true };
+  }
+
+  /**
+   * Update connection status for OBS/vMix in database
+   */
+  async updateConnectionStatus(connections: ConnectionStatus): Promise<void> {
+    if (!this.middlewareId) return;
+
+    try {
+      const { error } = await this.supabase.rpc('update_middleware_status', {
+        p_middleware_id: this.middlewareId,
+        p_status: 'online',
+        p_connections: connections
+      });
+
+      if (error) {
+        this.logger.error('[Supabase] Update connections error', error as Error);
+      } else {
+        this.logger.info('[Supabase] Connection status updated', connections);
+      }
+    } catch (err) {
+      this.logger.error('[Supabase] Update connections exception', err as Error);
+    }
   }
 
   // Getters

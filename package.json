@@ -1,6 +1,6 @@
 {
   "name": "smart-panel-connector",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Local middleware for Smart Panel - Bridge between cloud and OBS/vMix",
   "main": "build/main/main.js",
   "scripts": {
@@ -68,7 +68,8 @@
     },
     "mac": {
       "target": "dmg",
-      "icon": "assets/icon.icns"
+      "icon": "assets/icon.icns",
+      "identity": null
     },
     "nsis": {
       "oneClick": false,

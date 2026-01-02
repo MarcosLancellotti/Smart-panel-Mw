@@ -151,6 +151,12 @@ export class OBSService {
     return await this.obs.call('GetSceneList');
   }
 
+  async getCurrentScene(): Promise<string> {
+    if (!this._connected) throw new Error('OBS not connected');
+    const result = await this.obs.call('GetCurrentProgramScene');
+    return result.currentProgramSceneName;
+  }
+
   async setScene(sceneName: string): Promise<void> {
     if (!this._connected) throw new Error('OBS not connected');
     await this.obs.call('SetCurrentProgramScene', { sceneName });
@@ -160,6 +166,12 @@ export class OBSService {
   async getSources(sceneName: string): Promise<any> {
     if (!this._connected) throw new Error('OBS not connected');
     return await this.obs.call('GetSceneItemList', { sceneName });
+  }
+
+  async getSceneItemId(sceneName: string, sourceName: string): Promise<number> {
+    if (!this._connected) throw new Error('OBS not connected');
+    const result = await this.obs.call('GetSceneItemId', { sceneName, sourceName });
+    return result.sceneItemId;
   }
 
   async setSourceVisibility(sceneName: string, sceneItemId: number, visible: boolean): Promise<void> {
@@ -223,5 +235,32 @@ export class OBSService {
   async getRecordStatus(): Promise<any> {
     if (!this._connected) throw new Error('OBS not connected');
     return await this.obs.call('GetRecordStatus');
+  }
+
+  async setText(sourceName: string, text: string): Promise<void> {
+    if (!this._connected) throw new Error('OBS not connected');
+    await this.obs.call('SetInputSettings', {
+      inputName: sourceName,
+      inputSettings: { text }
+    });
+    this.logger.info(`[OBS] Text updated for source: ${sourceName}`);
+  }
+
+  async refreshBrowser(sourceName: string): Promise<void> {
+    if (!this._connected) throw new Error('OBS not connected');
+    await this.obs.call('PressInputPropertiesButton', {
+      inputName: sourceName,
+      propertyName: 'refreshnocache'
+    });
+    this.logger.info(`[OBS] Browser refreshed: ${sourceName}`);
+  }
+
+  async setBrowserUrl(sourceName: string, url: string): Promise<void> {
+    if (!this._connected) throw new Error('OBS not connected');
+    await this.obs.call('SetInputSettings', {
+      inputName: sourceName,
+      inputSettings: { url }
+    });
+    this.logger.info(`[OBS] Browser URL updated for source: ${sourceName}`);
   }
 }
