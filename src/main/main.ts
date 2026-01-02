@@ -24,6 +24,9 @@ let supabaseService: SupabaseService;
 let obsService: OBSService;
 let vmixService: VMixService;
 
+// Check for headless/service mode
+const isHeadless = process.argv.includes('--headless') || process.argv.includes('--service');
+
 function createWindow(): void {
   const iconPath = getIconPath();
   const fs = require('fs');
@@ -453,6 +456,26 @@ function initializeApp(): void {
     });
   }
 
+  // Auto-connect to Smart Panel if API key is saved
+  if (config.smartPanel?.apiKey) {
+    logger.info('[API] Auto-connecting with saved API key...');
+    supabaseService.connect(config.smartPanel.apiKey, getConnections, handleCommand)
+      .then(result => {
+        if (result.success) {
+          logger.info('[API] Auto-connect successful');
+          // Notify renderer if window exists
+          if (mainWindow) {
+            mainWindow.webContents.send('api-connected', {
+              name: supabaseService.getApiKeyName(),
+              companyId: supabaseService.getCompanyId()
+            });
+          }
+        } else {
+          logger.warn(`[API] Auto-connect failed: ${result.error}`);
+        }
+      });
+  }
+
   logger.info('Application initialized');
 }
 
@@ -504,14 +527,23 @@ function setupIpcHandlers(): void {
     const result = await supabaseService.connect(apiKey, getConnections, handleCommand);
 
     if (result.success) {
-      logger.info('[API] Connected successfully', {
+      // Save API key to config on successful connection
+      const companyId = supabaseService.getCompanyId() || '';
+      configManager.update({
+        smartPanel: {
+          ...configManager.get().smartPanel,
+          apiKey,
+          companyId
+        }
+      });
+      logger.info('[API] Connected successfully - API key saved', {
         middlewareId: supabaseService.getMiddlewareId(),
-        companyId: supabaseService.getCompanyId(),
+        companyId,
         name: supabaseService.getApiKeyName()
       });
       return {
         valid: true,
-        companyId: supabaseService.getCompanyId() || undefined,
+        companyId: companyId || undefined,
         name: supabaseService.getApiKeyName() || undefined
       };
     }
@@ -531,6 +563,14 @@ function setupIpcHandlers(): void {
 
   ipcMain.handle('is-connected', (): boolean => {
     return supabaseService.isConnected();
+  });
+
+  ipcMain.handle('get-connection-status', (): { connected: boolean; name?: string; companyId?: string } => {
+    return {
+      connected: supabaseService.isConnected(),
+      name: supabaseService.getApiKeyName() || undefined,
+      companyId: supabaseService.getCompanyId() || undefined
+    };
   });
 
   // OBS Connection
@@ -590,16 +630,26 @@ app.setName('Smart Panel Middleware');
 app.whenReady().then(() => {
   initializeApp();
   setupIpcHandlers();
-  createWindow();
+
+  if (isHeadless) {
+    logger.info('Running in headless/service mode - no GUI');
+  } else {
+    createWindow();
+  }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (!isHeadless && BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
 });
 
 app.on('window-all-closed', () => {
+  if (isHeadless) {
+    // In headless mode, don't quit when no windows
+    logger.info('No windows - continuing in headless mode');
+    return;
+  }
   logger.info('Application closing...');
   if (process.platform !== 'darwin') {
     app.quit();

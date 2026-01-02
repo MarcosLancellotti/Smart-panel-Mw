@@ -73,9 +73,6 @@ export class SupabaseService {
     // Test if we can reach Supabase
     this.testConnection();
 
-    // Test Realtime with simple channel
-    this.testRealtimeChannel();
-
     this.logger.info('[Supabase] Client initialized with Realtime config');
   }
 
@@ -206,13 +203,24 @@ export class SupabaseService {
       return;
     }
 
+    // Clean up existing channel before creating new one
+    if (this.channel) {
+      this.logger.info('[Supabase] Cleaning up existing channel before resubscribe');
+      this.supabase.removeChannel(this.channel);
+      this.channel = null;
+    }
+
     this.onCommandCallback = onCommand || null;
 
     const channelName = `middleware:${this.middlewareId}`;
     this.logger.info(`[Supabase] Subscribing to realtime channel: ${channelName}`);
 
-    // Simple channel - no complex config
-    this.channel = this.supabase.channel(`middleware:${this.middlewareId}`);
+    // Create channel with explicit config
+    this.channel = this.supabase.channel(channelName, {
+      config: {
+        broadcast: { self: false }
+      }
+    });
 
     // Listen for ALL broadcast events first for debugging
     this.channel.on('broadcast', { event: '*' }, (payload: any) => {

@@ -1,6 +1,6 @@
 {
   "name": "smart-panel-connector",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local middleware for Smart Panel - Bridge between cloud and OBS/vMix",
   "main": "build/main/main.js",
   "scripts": {

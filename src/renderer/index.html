@@ -219,6 +219,18 @@
 
       // Update status cards
       updateStatus();
+
+      // Listen for auto-connect events
+      window.electronAPI.onApiConnected((data) => {
+        console.log('API auto-connected:', data);
+        updateStatus();
+      });
+
+      // Refresh status periodically (every 5 seconds)
+      setInterval(updateStatus, 5000);
+
+      // Auto-refresh logs every 5 seconds
+      setInterval(refreshLogs, 5000);
     }
 
     async function loadConfig() {
@@ -255,12 +267,18 @@
     async function updateStatus() {
       const config = await window.electronAPI.getConfig();
 
-      // Smart Panel status
+      // Smart Panel status - check actual connection
       const spStatus = document.getElementById('status-smartpanel');
       const spDetail = document.getElementById('detail-smartpanel');
-      if (config.smartPanel.apiKey) {
+      const connStatus = await window.electronAPI.getConnectionStatus();
+
+      if (connStatus.connected) {
+        spStatus.className = 'status-indicator connected';
+        spStatus.querySelector('.text').textContent = 'Connected';
+        spDetail.textContent = connStatus.name || 'Connected to Smart Panel';
+      } else if (config.smartPanel.apiKey) {
         spStatus.className = 'status-indicator connecting';
-        spStatus.querySelector('.text').textContent = 'Ready';
+        spStatus.querySelector('.text').textContent = 'Connecting...';
         spDetail.textContent = 'API key configured';
       } else {
         spStatus.className = 'status-indicator disconnected';
@@ -268,26 +286,40 @@
         spDetail.textContent = 'Add API key in Configuration';
       }
 
-      // OBS status
+      // OBS status - check actual connection
       const obsStatus = document.getElementById('status-obs');
       const obsDetail = document.getElementById('detail-obs');
       if (config.obs?.enabled) {
-        obsStatus.className = 'status-indicator connecting';
-        obsStatus.querySelector('.text').textContent = 'Ready';
-        obsDetail.textContent = config.obs.host + ':' + config.obs.port;
+        const obsConn = await window.electronAPI.getOBSStatus();
+        if (obsConn.connected) {
+          obsStatus.className = 'status-indicator connected';
+          obsStatus.querySelector('.text').textContent = 'Connected';
+          obsDetail.textContent = `OBS ${obsConn.version || ''} - ${config.obs.host}:${config.obs.port}`;
+        } else {
+          obsStatus.className = 'status-indicator connecting';
+          obsStatus.querySelector('.text').textContent = 'Connecting...';
+          obsDetail.textContent = config.obs.host + ':' + config.obs.port;
+        }
       } else {
         obsStatus.className = 'status-indicator disconnected';
         obsStatus.querySelector('.text').textContent = 'Disabled';
         obsDetail.textContent = 'Enable in Configuration';
       }
 
-      // vMix status
+      // vMix status - check actual connection
       const vmixStatus = document.getElementById('status-vmix');
       const vmixDetail = document.getElementById('detail-vmix');
       if (config.vmix?.enabled) {
-        vmixStatus.className = 'status-indicator connecting';
-        vmixStatus.querySelector('.text').textContent = 'Ready';
-        vmixDetail.textContent = config.vmix.host + ':' + config.vmix.httpPort;
+        const vmixConn = await window.electronAPI.getVMixStatus();
+        if (vmixConn.connected) {
+          vmixStatus.className = 'status-indicator connected';
+          vmixStatus.querySelector('.text').textContent = 'Connected';
+          vmixDetail.textContent = `vMix ${vmixConn.version || ''} - ${config.vmix.host}:${config.vmix.httpPort}`;
+        } else {
+          vmixStatus.className = 'status-indicator connecting';
+          vmixStatus.querySelector('.text').textContent = 'Connecting...';
+          vmixDetail.textContent = config.vmix.host + ':' + config.vmix.httpPort;
+        }
       } else {
         vmixStatus.className = 'status-indicator disconnected';
         vmixStatus.querySelector('.text').textContent = 'Disabled';
@@ -296,8 +328,11 @@
     }
 
     async function refreshLogs() {
-      const logs = await window.electronAPI.getRecentLogs(50);
+      const logs = await window.electronAPI.getRecentLogs(100);
       document.getElementById('logs-container').textContent = logs.join('\n');
+      // Auto-scroll to bottom
+      const container = document.getElementById('logs-container');
+      container.scrollTop = container.scrollHeight;
     }
 
     // Event listeners

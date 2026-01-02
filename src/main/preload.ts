@@ -16,15 +16,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke('open-external', url),
   getVersion: (): Promise<string> => ipcRenderer.invoke('get-version'),
 
-  // API Key verification
-  verifyApiKey: (apiKey: string): Promise<{ valid: boolean; error?: string; companyId?: string }> =>
+  // API Key verification & connection
+  verifyApiKey: (apiKey: string): Promise<{ valid: boolean; error?: string; companyId?: string; name?: string }> =>
     ipcRenderer.invoke('verify-api-key', apiKey),
+  getConnectionStatus: (): Promise<{ connected: boolean; name?: string; companyId?: string }> =>
+    ipcRenderer.invoke('get-connection-status'),
+  onApiConnected: (callback: (data: { name?: string; companyId?: string }) => void) => {
+    ipcRenderer.on('api-connected', (_event, data) => callback(data));
+  },
 
   // Connection tests
-  testOBSConnection: (config: { host: string; port: number; password?: string }): Promise<{ success: boolean; error?: string }> =>
+  testOBSConnection: (config: { host: string; port: number; password?: string }): Promise<{ success: boolean; error?: string; version?: string }> =>
     ipcRenderer.invoke('test-obs-connection', config),
-  testVMixConnection: (config: { host: string; port: number }): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('test-vmix-connection', config)
+  testVMixConnection: (config: { host: string; port: number }): Promise<{ success: boolean; error?: string; version?: string }> =>
+    ipcRenderer.invoke('test-vmix-connection', config),
+  getOBSStatus: (): Promise<{ connected: boolean; version?: string }> =>
+    ipcRenderer.invoke('get-obs-status'),
+  getVMixStatus: (): Promise<{ connected: boolean; version?: string }> =>
+    ipcRenderer.invoke('get-vmix-status')
 });
 
 // Type declarations for renderer
@@ -38,9 +47,13 @@ declare global {
       getRecentLogs: (lines: number) => Promise<string[]>;
       openExternal: (url: string) => Promise<void>;
       getVersion: () => Promise<string>;
-      verifyApiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string; companyId?: string }>;
-      testOBSConnection: (config: { host: string; port: number; password?: string }) => Promise<{ success: boolean; error?: string }>;
-      testVMixConnection: (config: { host: string; port: number }) => Promise<{ success: boolean; error?: string }>;
+      verifyApiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string; companyId?: string; name?: string }>;
+      getConnectionStatus: () => Promise<{ connected: boolean; name?: string; companyId?: string }>;
+      onApiConnected: (callback: (data: { name?: string; companyId?: string }) => void) => void;
+      testOBSConnection: (config: { host: string; port: number; password?: string }) => Promise<{ success: boolean; error?: string; version?: string }>;
+      testVMixConnection: (config: { host: string; port: number }) => Promise<{ success: boolean; error?: string; version?: string }>;
+      getOBSStatus: () => Promise<{ connected: boolean; version?: string }>;
+      getVMixStatus: () => Promise<{ connected: boolean; version?: string }>;
     };
   }
 }
