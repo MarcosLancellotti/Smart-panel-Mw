@@ -9,7 +9,7 @@ import { LogManager } from '../core/LogManager';
 const SUPABASE_URL = 'https://vlxgdsqawtscusdkxbyv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZseGdkc3Fhd3RzY3VzZGt4Ynl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzNzYzOTEsImV4cCI6MjA3ODk1MjM5MX0.1GZdjLooB4BwE-OSPj46Ju-IPTpvUyCB2GHMzlSngb8';
 
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '1.3.0';
 
 export interface AuthResult {
   success: boolean;
@@ -223,16 +223,20 @@ export class SupabaseService {
       return;
     }
 
-    // Clean up existing channel before creating new one
+    const channelName = `middleware:${this.middlewareId}`;
+
+    // Check if already subscribed to this channel
     if (this.channel) {
-      this.logger.info('[Supabase] Cleaning up existing channel before resubscribe');
-      this.supabase.removeChannel(this.channel);
-      this.channel = null;
+      this.logger.info('[Supabase] Already subscribed, skipping duplicate subscription');
+      // Just update the callback if provided
+      if (onCommand) {
+        this.onCommandCallback = onCommand;
+      }
+      return;
     }
 
     this.onCommandCallback = onCommand || null;
 
-    const channelName = `middleware:${this.middlewareId}`;
     this.logger.info(`[Supabase] Subscribing to realtime channel: ${channelName}`);
 
     // Create channel with explicit config
@@ -242,16 +246,10 @@ export class SupabaseService {
       }
     });
 
-    // Listen for ALL broadcast events first for debugging
-    this.channel.on('broadcast', { event: '*' }, (payload: any) => {
-      this.logger.info(`📥 ANY BROADCAST: ${JSON.stringify(payload)}`);
-    });
-
     // Listen specifically for command events
     this.channel.on('broadcast', { event: 'command' }, async (payload) => {
-      this.logger.info(`📥 COMMAND payload: ${JSON.stringify(payload)}`);
       const cmd = payload.payload as CommandPayload;
-      this.logger.info(`📥 Command action: ${cmd.action}`);
+      this.logger.info(`📥 Command: ${cmd.action} (request_id: ${cmd.request_id})`);
 
       // Handle ping internally - send both pong AND response to response_channel
       if (cmd.action === 'ping') {
@@ -441,11 +439,16 @@ export class SupabaseService {
       const { error } = await this.supabase.rpc('update_middleware_status', {
         p_middleware_id: this.middlewareId,
         p_status: 'online',
-        p_connections: connections
+        p_connections: connections,
+        p_metadata: {
+          appVersion: APP_VERSION,
+          os: process.platform,
+          lastHeartbeat: new Date().toISOString()
+        }
       });
 
       if (error) {
-        this.logger.error('[Supabase] Heartbeat error', error as Error);
+        this.logger.error(`[Supabase] Heartbeat error: ${error.message} (code: ${error.code})`);
       } else {
         this.logger.debug('[Supabase] Heartbeat sent');
       }
@@ -490,7 +493,12 @@ export class SupabaseService {
         await this.supabase.rpc('update_middleware_status', {
           p_middleware_id: this.middlewareId,
           p_status: 'offline',
-          p_connections: {}
+          p_connections: {},
+          p_metadata: {
+            appVersion: APP_VERSION,
+            os: process.platform,
+            disconnectedAt: new Date().toISOString()
+          }
         });
 
         this.logger.info('[Supabase] Status set to offline');
@@ -553,7 +561,12 @@ export class SupabaseService {
       const { error } = await this.supabase.rpc('update_middleware_status', {
         p_middleware_id: this.middlewareId,
         p_status: 'online',
-        p_connections: connections
+        p_connections: connections,
+        p_metadata: {
+          appVersion: APP_VERSION,
+          os: process.platform,
+          lastUpdate: new Date().toISOString()
+        }
       });
 
       if (error) {
