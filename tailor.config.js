@@ -36,7 +36,12 @@ module.exports = {
   },
 
   win: {
-    target: 'dir',
+    target: [
+      {
+        target: 'dir',
+        arch: ['x64']  // x64 para la mayoría de PCs Windows
+      }
+    ],
     icon: 'assets/icon.icns'
   },
 
