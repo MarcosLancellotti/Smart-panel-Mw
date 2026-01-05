@@ -629,6 +629,30 @@ function initializeApp(): void {
     }
   });
 
+  // Set up OBS status change callback
+  obsService.onStatusChange((status) => {
+    logger.info(`[OBS] Status changed: connected=${status.connected}`);
+    if (mainWindow) {
+      mainWindow.webContents.send('obs-status-changed', status);
+    }
+    // Update Smart Panel with new connection status
+    if (supabaseService.isConnected()) {
+      supabaseService.updateConnectionStatus(getConnections());
+    }
+  });
+
+  // Set up vMix status change callback
+  vmixService.onStatusChange((status) => {
+    logger.info(`[vMix] Status changed: connected=${status.connected}`);
+    if (mainWindow) {
+      mainWindow.webContents.send('vmix-status-changed', status);
+    }
+    // Update Smart Panel with new connection status
+    if (supabaseService.isConnected()) {
+      supabaseService.updateConnectionStatus(getConnections());
+    }
+  });
+
   // Auto-connect to Smart Panel if API key is saved
   if (config.smartPanel?.apiKey) {
     logger.info('[API] Auto-connecting with saved API key...');

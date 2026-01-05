@@ -20,6 +20,7 @@ export class VMixService {
   private _connected: boolean = false;
   private _version: string | null = null;
   private xmlParser: XMLParser;
+  private onStatusChangeCallback: ((status: VMixConnectionStatus) => void) | null = null;
 
   constructor(logger: LogManager) {
     this.logger = logger;
@@ -28,6 +29,16 @@ export class VMixService {
       attributeNamePrefix: '@_'
     });
     this.logger.info('[vMix] Service initialized');
+  }
+
+  private notifyStatusChange(): void {
+    if (this.onStatusChangeCallback) {
+      this.onStatusChangeCallback(this.getStatus());
+    }
+  }
+
+  onStatusChange(callback: (status: VMixConnectionStatus) => void): void {
+    this.onStatusChangeCallback = callback;
   }
 
   private getBaseUrl(): string {
@@ -55,6 +66,7 @@ export class VMixService {
       this._connected = true;
 
       this.logger.info(`[vMix] Connected! Version: ${this._version}`);
+      this.notifyStatusChange();
 
       return {
         connected: true,
@@ -66,6 +78,7 @@ export class VMixService {
       const errorMsg = (error as Error).message;
       this.logger.error(`[vMix] Connection failed: ${errorMsg}`);
       this._connected = false;
+      this.notifyStatusChange();
 
       return {
         connected: false,
@@ -78,6 +91,7 @@ export class VMixService {
 
   async disconnect(): Promise<void> {
     this._connected = false;
+    this.notifyStatusChange();
     this.logger.info('[vMix] Disconnected');
   }
 
@@ -102,12 +116,23 @@ export class VMixService {
     const url = `${this.getBaseUrl()}?${params}`;
     this.logger.info(`[vMix] API call: ${params}`);
 
-    const response = await fetch(url, {
-      signal: AbortSignal.timeout(10000)
-    });
+    try {
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(10000)
+      });
 
-    if (!response.ok) {
-      throw new Error(`vMix API error: HTTP ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`vMix API error: HTTP ${response.status}`);
+      }
+    } catch (error) {
+      // If fetch fails completely (network error, timeout), mark as disconnected
+      const errorMsg = (error as Error).message;
+      if (errorMsg.includes('fetch') || errorMsg.includes('network') || errorMsg.includes('timeout') || errorMsg.includes('ECONNREFUSED')) {
+        this.logger.warn(`[vMix] Connection lost: ${errorMsg}`);
+        this._connected = false;
+        this.notifyStatusChange();
+      }
+      throw error;
     }
   }
 

@@ -39,7 +39,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getOBSStatus: (): Promise<{ connected: boolean; version?: string }> =>
     ipcRenderer.invoke('get-obs-status'),
   getVMixStatus: (): Promise<{ connected: boolean; version?: string }> =>
-    ipcRenderer.invoke('get-vmix-status')
+    ipcRenderer.invoke('get-vmix-status'),
+
+  // Real-time status change events
+  onOBSStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => {
+    ipcRenderer.on('obs-status-changed', (_event, status) => callback(status));
+  },
+  onVMixStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => {
+    ipcRenderer.on('vmix-status-changed', (_event, status) => callback(status));
+  }
 });
 
 // Type declarations for renderer
@@ -62,6 +70,8 @@ declare global {
       testVMixConnection: (config: { host: string; port: number }) => Promise<{ success: boolean; error?: string; version?: string }>;
       getOBSStatus: () => Promise<{ connected: boolean; version?: string }>;
       getVMixStatus: () => Promise<{ connected: boolean; version?: string }>;
+      onOBSStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => void;
+      onVMixStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => void;
     };
   }
 }

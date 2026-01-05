@@ -254,6 +254,18 @@
         }
       });
 
+      // Listen for real-time OBS status changes
+      window.electronAPI.onOBSStatusChanged((status) => {
+        console.log('OBS status changed:', status);
+        updateOBSStatus(status);
+      });
+
+      // Listen for real-time vMix status changes
+      window.electronAPI.onVMixStatusChanged((status) => {
+        console.log('vMix status changed:', status);
+        updateVMixStatus(status);
+      });
+
       // Refresh status periodically (every 5 seconds)
       setInterval(updateStatus, 5000);
 
@@ -320,6 +332,38 @@
     function hideSuspendedStatus() {
       const spDetail = document.getElementById('detail-smartpanel');
       spDetail.style.color = '';
+    }
+
+    // Real-time OBS status update (called from event listener)
+    function updateOBSStatus(status) {
+      const obsStatusEl = document.getElementById('status-obs');
+      const obsDetail = document.getElementById('detail-obs');
+
+      if (status.connected) {
+        obsStatusEl.className = 'status-indicator connected';
+        obsStatusEl.querySelector('.text').textContent = 'Connected';
+        obsDetail.textContent = `OBS ${status.version || ''} - ${status.host || 'localhost'}:${status.port || 4455}`;
+      } else {
+        obsStatusEl.className = 'status-indicator disconnected';
+        obsStatusEl.querySelector('.text').textContent = 'Disconnected';
+        obsDetail.textContent = 'Connection lost - will auto-reconnect';
+      }
+    }
+
+    // Real-time vMix status update (called from event listener)
+    function updateVMixStatus(status) {
+      const vmixStatusEl = document.getElementById('status-vmix');
+      const vmixDetail = document.getElementById('detail-vmix');
+
+      if (status.connected) {
+        vmixStatusEl.className = 'status-indicator connected';
+        vmixStatusEl.querySelector('.text').textContent = 'Connected';
+        vmixDetail.textContent = `vMix ${status.version || ''} - ${status.host || 'localhost'}:${status.port || 8088}`;
+      } else {
+        vmixStatusEl.className = 'status-indicator disconnected';
+        vmixStatusEl.querySelector('.text').textContent = 'Disconnected';
+        vmixDetail.textContent = 'Connection lost';
+      }
     }
 
     async function updateStatus() {
