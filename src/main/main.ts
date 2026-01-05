@@ -621,19 +621,35 @@ function initializeApp(): void {
     });
   }
 
+  // Set up suspend callback
+  supabaseService.onSuspendChange((info) => {
+    logger.info(`[API] Suspend state changed: ${JSON.stringify(info)}`);
+    if (mainWindow) {
+      mainWindow.webContents.send('api-suspend-changed', info);
+    }
+  });
+
   // Auto-connect to Smart Panel if API key is saved
   if (config.smartPanel?.apiKey) {
     logger.info('[API] Auto-connecting with saved API key...');
     supabaseService.connect(config.smartPanel.apiKey, getConnections, handleCommand)
       .then(result => {
         if (result.success) {
-          logger.info('[API] Auto-connect successful');
-          // Notify renderer if window exists
-          if (mainWindow) {
-            mainWindow.webContents.send('api-connected', {
-              name: supabaseService.getApiKeyName(),
-              companyId: supabaseService.getCompanyId()
-            });
+          if (result.suspended) {
+            logger.warn(`[API] Auto-connect: middleware is suspended (${result.suspend_reason})`);
+            if (mainWindow) {
+              mainWindow.webContents.send('api-suspended', {
+                reason: result.suspend_reason
+              });
+            }
+          } else {
+            logger.info('[API] Auto-connect successful');
+            if (mainWindow) {
+              mainWindow.webContents.send('api-connected', {
+                name: supabaseService.getApiKeyName(),
+                companyId: supabaseService.getCompanyId()
+              });
+            }
           }
         } else {
           logger.warn(`[API] Auto-connect failed: ${result.error}`);
@@ -682,7 +698,7 @@ function setupIpcHandlers(): void {
   });
 
   // Verify API Key AND connect
-  ipcMain.handle('verify-api-key', async (_event, apiKey: string): Promise<{ valid: boolean; error?: string; companyId?: string; name?: string }> => {
+  ipcMain.handle('verify-api-key', async (_event, apiKey: string): Promise<{ valid: boolean; error?: string; companyId?: string; name?: string; suspended?: boolean; suspend_reason?: string }> => {
     logger.info('[API] Verifying and connecting...');
 
     if (!apiKey || !apiKey.startsWith('sp_')) {
@@ -701,6 +717,22 @@ function setupIpcHandlers(): void {
           companyId
         }
       });
+
+      // Check if suspended
+      if (result.suspended) {
+        logger.warn('[API] Connected but middleware is suspended', {
+          middlewareId: supabaseService.getMiddlewareId(),
+          suspend_reason: result.suspend_reason
+        });
+        return {
+          valid: true,
+          companyId: companyId || undefined,
+          name: supabaseService.getApiKeyName() || undefined,
+          suspended: true,
+          suspend_reason: result.suspend_reason
+        };
+      }
+
       logger.info('[API] Connected successfully - API key saved', {
         middlewareId: supabaseService.getMiddlewareId(),
         companyId,
@@ -709,7 +741,8 @@ function setupIpcHandlers(): void {
       return {
         valid: true,
         companyId: companyId || undefined,
-        name: supabaseService.getApiKeyName() || undefined
+        name: supabaseService.getApiKeyName() || undefined,
+        suspended: false
       };
     }
 

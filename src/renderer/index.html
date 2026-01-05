@@ -238,6 +238,22 @@
         updateStatus();
       });
 
+      // Listen for suspend events
+      window.electronAPI.onApiSuspended((data) => {
+        console.log('API suspended:', data);
+        showSuspendedStatus(data.reason);
+      });
+
+      window.electronAPI.onApiSuspendChanged((data) => {
+        console.log('API suspend changed:', data);
+        if (data.suspended) {
+          showSuspendedStatus(data.reason, data.message);
+        } else {
+          hideSuspendedStatus();
+          updateStatus();
+        }
+      });
+
       // Refresh status periodically (every 5 seconds)
       setInterval(updateStatus, 5000);
 
@@ -277,6 +293,33 @@
     function toggleVmixSettings() {
       const enabled = document.getElementById('vmixEnabled').checked;
       document.getElementById('vmix-settings').style.display = enabled ? 'block' : 'none';
+    }
+
+    function getSuspendReasonText(reason) {
+      const reasons = {
+        'disabled_by_user': 'Disabled by administrator',
+        'disabled_by_platform': 'Disabled by platform',
+        'admin_suspended': 'Suspended by admin',
+        'quota_exceeded': 'Middleware quota exceeded',
+        'subscription_expired': 'Subscription expired',
+        'payment_failed': 'Payment failed'
+      };
+      return reasons[reason] || reason || 'Disabled';
+    }
+
+    function showSuspendedStatus(reason, message) {
+      const spStatus = document.getElementById('status-smartpanel');
+      const spDetail = document.getElementById('detail-smartpanel');
+
+      spStatus.className = 'status-indicator suspended';
+      spStatus.querySelector('.text').textContent = 'Suspended';
+      spDetail.textContent = message || getSuspendReasonText(reason);
+      spDetail.style.color = '#ff6b6b';
+    }
+
+    function hideSuspendedStatus() {
+      const spDetail = document.getElementById('detail-smartpanel');
+      spDetail.style.color = '';
     }
 
     async function updateStatus() {
@@ -393,10 +436,19 @@
       statusDiv.style.display = 'block';
 
       if (result.valid) {
-        statusBadge.className = 'status-badge success';
-        statusBadge.textContent = 'Valid';
-        statusText.textContent = result.name ? `Connected: ${result.name}` : 'Connected successfully';
-        btn.textContent = '✓ Verified';
+        if (result.suspended) {
+          statusBadge.className = 'status-badge warning';
+          statusBadge.textContent = 'Suspended';
+          statusText.textContent = getSuspendReasonText(result.suspend_reason);
+          btn.textContent = '⚠ Suspended';
+          showSuspendedStatus(result.suspend_reason);
+        } else {
+          statusBadge.className = 'status-badge success';
+          statusBadge.textContent = 'Valid';
+          statusText.textContent = result.name ? `Connected: ${result.name}` : 'Connected successfully';
+          btn.textContent = '✓ Verified';
+          hideSuspendedStatus();
+        }
       } else {
         statusBadge.className = 'status-badge error';
         statusBadge.textContent = 'Invalid';

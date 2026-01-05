@@ -17,12 +17,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVersion: (): Promise<string> => ipcRenderer.invoke('get-version'),
 
   // API Key verification & connection
-  verifyApiKey: (apiKey: string): Promise<{ valid: boolean; error?: string; companyId?: string; name?: string }> =>
+  verifyApiKey: (apiKey: string): Promise<{ valid: boolean; error?: string; companyId?: string; name?: string; suspended?: boolean; suspend_reason?: string }> =>
     ipcRenderer.invoke('verify-api-key', apiKey),
   getConnectionStatus: (): Promise<{ connected: boolean; name?: string; companyId?: string }> =>
     ipcRenderer.invoke('get-connection-status'),
   onApiConnected: (callback: (data: { name?: string; companyId?: string }) => void) => {
     ipcRenderer.on('api-connected', (_event, data) => callback(data));
+  },
+  onApiSuspended: (callback: (data: { reason?: string }) => void) => {
+    ipcRenderer.on('api-suspended', (_event, data) => callback(data));
+  },
+  onApiSuspendChanged: (callback: (data: { suspended: boolean; reason?: string; message?: string }) => void) => {
+    ipcRenderer.on('api-suspend-changed', (_event, data) => callback(data));
   },
 
   // Connection tests
@@ -47,9 +53,11 @@ declare global {
       getRecentLogs: (lines: number) => Promise<string[]>;
       openExternal: (url: string) => Promise<void>;
       getVersion: () => Promise<string>;
-      verifyApiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string; companyId?: string; name?: string }>;
+      verifyApiKey: (apiKey: string) => Promise<{ valid: boolean; error?: string; companyId?: string; name?: string; suspended?: boolean; suspend_reason?: string }>;
       getConnectionStatus: () => Promise<{ connected: boolean; name?: string; companyId?: string }>;
       onApiConnected: (callback: (data: { name?: string; companyId?: string }) => void) => void;
+      onApiSuspended: (callback: (data: { reason?: string }) => void) => void;
+      onApiSuspendChanged: (callback: (data: { suspended: boolean; reason?: string; message?: string }) => void) => void;
       testOBSConnection: (config: { host: string; port: number; password?: string }) => Promise<{ success: boolean; error?: string; version?: string }>;
       testVMixConnection: (config: { host: string; port: number }) => Promise<{ success: boolean; error?: string; version?: string }>;
       getOBSStatus: () => Promise<{ connected: boolean; version?: string }>;

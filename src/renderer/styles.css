@@ -172,6 +172,20 @@ body {
   background: var(--error);
 }
 
+.status-indicator.suspended .dot {
+  background: #ff6b6b;
+  animation: pulse-suspend 1s infinite;
+}
+
+.status-indicator.suspended .text {
+  color: #ff6b6b;
+}
+
+@keyframes pulse-suspend {
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px #ff6b6b; }
+  50% { opacity: 0.6; box-shadow: 0 0 4px #ff6b6b; }
+}
+
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
@@ -312,6 +326,11 @@ body {
 
 .status-badge.error {
   background: var(--error);
+  color: white;
+}
+
+.status-badge.warning {
+  background: #ff6b6b;
   color: white;
 }
 

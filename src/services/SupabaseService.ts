@@ -19,6 +19,14 @@ export interface AuthResult {
   api_key_name?: string;
   message?: string;
   error?: string;
+  active?: boolean;
+  suspend_reason?: string;
+}
+
+export interface SuspendInfo {
+  suspended: boolean;
+  reason?: string;
+  message?: string;
 }
 
 export interface ConnectionStatus {
@@ -53,7 +61,13 @@ export class SupabaseService {
   private apiKeyName: string | null = null;
   private channel: RealtimeChannel | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
+  private retryInterval: NodeJS.Timeout | null = null;
   private onCommandCallback: ((command: CommandPayload) => void) | null = null;
+  private onSuspendCallback: ((info: SuspendInfo) => void) | null = null;
+  private suspended: boolean = false;
+  private suspendReason: string | null = null;
+  private savedApiKey: string | null = null;
+  private savedGetConnections: (() => ConnectionStatus) | null = null;
 
   constructor(logger: LogManager) {
     this.logger = logger;
@@ -146,17 +160,41 @@ export class SupabaseService {
         this.companyId = data.company_id;
         this.apiKeyName = data.api_key_name || data.name;
 
+        // Check if middleware is active (not suspended)
+        const isActive = data.active !== false; // Default to true if not specified
+
         this.logger.info('[Supabase] Authenticated successfully', {
           middlewareId: this.middlewareId,
           companyId: this.companyId,
-          name: this.apiKeyName
+          name: this.apiKeyName,
+          active: isActive
         });
+
+        // If suspended, handle it
+        if (!isActive) {
+          this.logger.warn(`[Supabase] Middleware is suspended: ${data.suspend_reason || 'No reason provided'}`);
+          this.handleSuspend(data.suspend_reason || 'disabled_by_platform', data.suspend_message);
+          return {
+            success: true,
+            middleware_id: data.middleware_id,
+            company_id: data.company_id,
+            api_key_name: data.api_key_name || data.name,
+            active: false,
+            suspend_reason: data.suspend_reason
+          };
+        }
+
+        // If was suspended but now active, resume
+        if (this.suspended) {
+          this.handleResume();
+        }
 
         return {
           success: true,
           middleware_id: data.middleware_id,
           company_id: data.company_id,
-          api_key_name: data.api_key_name || data.name
+          api_key_name: data.api_key_name || data.name,
+          active: true
         };
       }
 
@@ -250,6 +288,48 @@ export class SupabaseService {
     this.channel.on('broadcast', { event: 'command' }, async (payload) => {
       const cmd = payload.payload as CommandPayload;
       this.logger.info(`📥 Command: ${cmd.action} (request_id: ${cmd.request_id})`);
+
+      // Handle middleware_disable - suspend immediately
+      if (cmd.action === 'middleware_disable') {
+        const reason = (cmd.params?.reason as string) || 'disabled_by_platform';
+        const message = (cmd.params?.message as string) || undefined;
+        this.logger.warn(`⛔ Middleware disabled: ${reason}`);
+
+        // Send response before suspending
+        if (cmd.response_channel) {
+          await this.sendResponse(cmd.request_id!, {
+            success: true,
+            data: { acknowledged: true }
+          }, cmd.response_channel);
+        }
+
+        this.handleSuspend(reason, message);
+        return;
+      }
+
+      // Handle middleware_enable - resume
+      if (cmd.action === 'middleware_enable') {
+        this.logger.info('✅ Middleware enabled');
+
+        if (cmd.response_channel) {
+          await this.sendResponse(cmd.request_id!, {
+            success: true,
+            data: { acknowledged: true }
+          }, cmd.response_channel);
+        }
+
+        this.handleResume();
+        return;
+      }
+
+      // If suspended, ignore other commands
+      if (this.suspended) {
+        this.logger.warn(`[Supabase] Ignoring command while suspended: ${cmd.action}`);
+        if (cmd.response_channel) {
+          await this.sendError(cmd.request_id!, 'Middleware is suspended', cmd.response_channel);
+        }
+        return;
+      }
 
       // Handle ping internally - send both pong AND response to response_channel
       if (cmd.action === 'ping') {
@@ -431,12 +511,13 @@ export class SupabaseService {
 
   /**
    * Send heartbeat update using update_middleware_status RPC
+   * Also checks if middleware is still active
    */
   private async sendHeartbeat(connections: ConnectionStatus): Promise<void> {
     if (!this.middlewareId) return;
 
     try {
-      const { error } = await this.supabase.rpc('update_middleware_status', {
+      const { data, error } = await this.supabase.rpc('update_middleware_status', {
         p_middleware_id: this.middlewareId,
         p_status: 'online',
         p_connections: connections,
@@ -451,6 +532,12 @@ export class SupabaseService {
         this.logger.error(`[Supabase] Heartbeat error: ${error.message} (code: ${error.code})`);
       } else {
         this.logger.debug('[Supabase] Heartbeat sent');
+
+        // Check if middleware is still active (if response includes this info)
+        if (data && data.active === false) {
+          this.logger.warn(`[Supabase] Heartbeat indicates middleware is suspended: ${data.suspend_reason}`);
+          this.handleSuspend(data.suspend_reason || 'disabled_by_platform', data.suspend_message);
+        }
       }
     } catch (err) {
       this.logger.error('[Supabase] Heartbeat exception', err as Error);
@@ -466,6 +553,113 @@ export class SupabaseService {
       this.heartbeatInterval = null;
       this.logger.info('[Supabase] Heartbeat stopped');
     }
+  }
+
+  /**
+   * Handle middleware suspension
+   */
+  private handleSuspend(reason: string, message?: string): void {
+    if (this.suspended) return; // Already suspended
+
+    this.suspended = true;
+    this.suspendReason = reason;
+
+    this.logger.warn(`⛔ [Supabase] Middleware SUSPENDED: ${reason}`);
+
+    // Stop heartbeat (but keep channel to receive middleware_enable)
+    this.stopHeartbeat();
+
+    // DON'T unsubscribe - we need to keep listening for middleware_enable
+    // Commands are already ignored when suspended (see subscribeToCommands)
+
+    // Notify callback
+    if (this.onSuspendCallback) {
+      this.onSuspendCallback({
+        suspended: true,
+        reason,
+        message
+      });
+    }
+
+    // Start retry interval as backup (every 60 seconds)
+    this.startRetry();
+  }
+
+  /**
+   * Handle middleware resume
+   */
+  private handleResume(): void {
+    if (!this.suspended) return; // Not suspended
+
+    this.logger.info('✅ [Supabase] Middleware RESUMED');
+
+    this.suspended = false;
+    this.suspendReason = null;
+
+    // Stop retry interval
+    this.stopRetry();
+
+    // Notify callback
+    if (this.onSuspendCallback) {
+      this.onSuspendCallback({
+        suspended: false
+      });
+    }
+
+    // If channel still exists, just restart heartbeat
+    // If channel was lost, do full reconnect
+    if (this.channel && this.savedGetConnections) {
+      this.logger.info('[Supabase] Restarting heartbeat after resume...');
+      this.startHeartbeat(this.savedGetConnections);
+    } else if (this.savedApiKey && this.savedGetConnections) {
+      this.logger.info('[Supabase] Channel lost, doing full reconnect...');
+      this.connect(this.savedApiKey, this.savedGetConnections, this.onCommandCallback || undefined);
+    }
+  }
+
+  /**
+   * Start retry interval to check if middleware is re-enabled
+   */
+  private startRetry(): void {
+    if (this.retryInterval) {
+      clearInterval(this.retryInterval);
+    }
+
+    this.logger.info('[Supabase] Starting retry check (60s interval)');
+
+    this.retryInterval = setInterval(async () => {
+      if (!this.savedApiKey) return;
+
+      this.logger.info('[Supabase] Checking if middleware is re-enabled...');
+
+      // Try to authenticate again
+      const auth = await this.authenticate(this.savedApiKey);
+
+      if (auth.success && auth.active !== false) {
+        this.logger.info('[Supabase] Middleware is now active!');
+        this.handleResume();
+      } else {
+        this.logger.info('[Supabase] Middleware still suspended');
+      }
+    }, 60000);
+  }
+
+  /**
+   * Stop retry interval
+   */
+  private stopRetry(): void {
+    if (this.retryInterval) {
+      clearInterval(this.retryInterval);
+      this.retryInterval = null;
+      this.logger.info('[Supabase] Retry check stopped');
+    }
+  }
+
+  /**
+   * Set suspend state change callback
+   */
+  onSuspendChange(callback: (info: SuspendInfo) => void): void {
+    this.onSuspendCallback = callback;
   }
 
   /**
@@ -486,7 +680,10 @@ export class SupabaseService {
     this.logger.info('[Supabase] Disconnecting...');
 
     this.stopHeartbeat();
+    this.stopRetry();
     this.unsubscribe();
+    this.suspended = false;
+    this.suspendReason = null;
 
     if (this.middlewareId) {
       try {
@@ -535,11 +732,24 @@ export class SupabaseService {
     apiKey: string,
     getConnections: () => ConnectionStatus,
     onCommand?: (command: CommandPayload) => void
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; suspended?: boolean; suspend_reason?: string }> {
+    // Save for retry
+    this.savedApiKey = apiKey;
+    this.savedGetConnections = getConnections;
+
     // Step 1: Authenticate (also registers middleware)
     const auth = await this.authenticate(apiKey);
     if (!auth.success) {
       return { success: false, error: auth.error };
+    }
+
+    // Check if suspended
+    if (auth.active === false) {
+      return {
+        success: true,
+        suspended: true,
+        suspend_reason: auth.suspend_reason
+      };
     }
 
     // Step 2: Subscribe to realtime with command handler
@@ -548,7 +758,7 @@ export class SupabaseService {
     // Step 3: Start heartbeat
     this.startHeartbeat(getConnections);
 
-    return { success: true };
+    return { success: true, suspended: false };
   }
 
   /**
@@ -584,5 +794,7 @@ export class SupabaseService {
   getCompanyId(): string | null { return this.companyId; }
   getApiKeyId(): string | null { return this.apiKeyId; }
   getApiKeyName(): string | null { return this.apiKeyName; }
-  isConnected(): boolean { return this.middlewareId !== null; }
+  isConnected(): boolean { return this.middlewareId !== null && !this.suspended; }
+  isSuspended(): boolean { return this.suspended; }
+  getSuspendReason(): string | null { return this.suspendReason; }
 }
