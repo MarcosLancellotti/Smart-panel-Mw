@@ -262,6 +262,78 @@ Smart Panel © ${new Date().getFullYear()}
 
   await fs.writeFile(path.join(installerDir, 'README.txt'), readmeContent);
 
+  // Crear script shell alternativo (más confiable cuando hay quarantine)
+  const shellInstaller = `#!/bin/bash
+# ${productName} - Instalador
+# Version: ${version}
+
+APP_NAME="${productName}"
+APP_FILE="${productName}.app"
+
+echo ""
+echo "======================================"
+echo "  $APP_NAME - Instalador"
+echo "  Version: ${version}"
+echo "======================================"
+echo ""
+
+SCRIPT_DIR="$( cd "$( dirname "\${BASH_SOURCE[0]}" )" && pwd )"
+SOURCE_PATH="$SCRIPT_DIR/$APP_FILE"
+DEST_PATH="/Applications/$APP_FILE"
+
+if [ ! -d "$SOURCE_PATH" ]; then
+    echo "Error: No se encontro '$APP_FILE'"
+    echo ""
+    echo "Asegurate de:"
+    echo "1. Descomprimir el ZIP completo"
+    echo "2. Ejecutar este script desde la carpeta descomprimida"
+    echo ""
+    read -p "Presiona Enter para cerrar..."
+    exit 1
+fi
+
+echo "Instalando $APP_NAME..."
+echo ""
+
+echo "  -> Removiendo bloqueo de seguridad..."
+xattr -cr "$SOURCE_PATH" 2>/dev/null
+
+if [ -d "$DEST_PATH" ]; then
+    echo "  Ya existe una version instalada."
+    read -p "  Reemplazar? (s/n): " REPLY
+    if [[ ! $REPLY =~ ^[Ss]$ ]]; then
+        echo "Instalacion cancelada."
+        exit 0
+    fi
+    echo "  -> Eliminando version anterior..."
+    sudo rm -rf "$DEST_PATH"
+fi
+
+echo "  -> Copiando a /Applications..."
+sudo cp -R "$SOURCE_PATH" "$DEST_PATH"
+
+echo "  -> Configurando permisos..."
+sudo xattr -cr "$DEST_PATH" 2>/dev/null
+sudo chmod -R +x "$DEST_PATH/Contents/MacOS/"
+
+echo ""
+echo "Instalacion completada!"
+echo ""
+echo "Puedes encontrar la app en:"
+echo "  - /Applications/$APP_FILE"
+echo "  - Launchpad"
+echo "  - Spotlight (Cmd+Space)"
+echo ""
+
+read -p "Abrir la aplicacion ahora? (s/n): " OPEN_APP
+if [[ $OPEN_APP =~ ^[Ss]$ ]]; then
+    open "$DEST_PATH"
+fi
+`;
+
+  await fs.writeFile(path.join(installerDir, 'install.command'), shellInstaller);
+  await fs.chmod(path.join(installerDir, 'install.command'), '755');
+
   // Crear ZIP final
   const zipPath = path.join(path.dirname(outDir), `Smart-Panel-Middleware-mac.zip`);
   await createZip(installerDir, zipPath);
