@@ -10,8 +10,9 @@
     "dev": "npm run build && electron .",
     "dev:watch": "concurrently \"tsc -w\" \"nodemon --watch build -e js --exec electron .\"",
     "start": "electron .",
-    "build:exe": "npm run build && electron-builder --win",
-    "build:mac": "npm run build && electron-builder --mac"
+    "build:exe": "npm run build && electron-builder --win --config tailor.config.js",
+    "build:mac": "npm run build && electron-builder --mac --config tailor.config.js",
+    "build:all": "npm run build && electron-builder --mac --win --config tailor.config.js"
   },
   "keywords": [
     "broadcast",
@@ -38,9 +39,11 @@
   "devDependencies": {
     "@types/node": "^20.10.0",
     "@types/ws": "^8.5.9",
+    "archiver": "^7.0.1",
     "concurrently": "^8.2.2",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
+    "fs-extra": "^11.3.3",
     "typescript": "^5.3.0"
   },
   "build": {
