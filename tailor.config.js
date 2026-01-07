@@ -42,7 +42,7 @@ module.exports = {
         arch: ['x64']  // x64 para la mayoría de PCs Windows
       }
     ],
-    icon: 'assets/icon.icns'
+    icon: 'assets/logo.png'  // electron-builder converts PNG to ICO automatically
   },
 
   // Hook después de empaquetar cada plataforma

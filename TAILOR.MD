@@ -10,7 +10,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.4.1 |
+| **Version** | 1.4.2 |
 | **Platforms** | macOS (Apple Silicon), Windows (x64) |
 | **Framework** | Electron 28 + TypeScript |
 | **Cloud** | Supabase Realtime (WebSocket) |
@@ -293,6 +293,10 @@ gh release create v1.4.1 \
 ---
 
 ## RECENT CHANGES (v1.4.x)
+
+### v1.4.2 (2026-01-07)
+- Fixed Windows app icon (was showing default Electron icon)
+- Updated tailor.config.js to use PNG for Windows icon conversion
 
 ### v1.4.1 (2026-01-07)
 - Real-time OBS/vMix status updates (instant UI feedback)
