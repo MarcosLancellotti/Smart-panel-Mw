@@ -9,7 +9,7 @@ import { LogManager } from '../core/LogManager';
 const SUPABASE_URL = 'https://vlxgdsqawtscusdkxbyv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZseGdkc3Fhd3RzY3VzZGt4Ynl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzNzYzOTEsImV4cCI6MjA3ODk1MjM5MX0.1GZdjLooB4BwE-OSPj46Ju-IPTpvUyCB2GHMzlSngb8';
 
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 
 export interface AuthResult {
   success: boolean;
