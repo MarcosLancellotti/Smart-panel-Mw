@@ -341,4 +341,116 @@ gh release create v1.4.2 \
 
 ---
 
+## SUPABASE RPC FUNCTIONS (BACKUP)
+
+### authenticate_middleware
+
+```sql
+CREATE OR REPLACE FUNCTION authenticate_middleware(
+  p_api_key TEXT,
+  p_machine_name TEXT DEFAULT NULL,
+  p_metadata JSONB DEFAULT '{}'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_key_record api_keys%ROWTYPE;
+  v_middleware middlewares%ROWTYPE;
+BEGIN
+  -- 1. Verify API key with bcrypt
+  SELECT * INTO v_key_record
+  FROM api_keys
+  WHERE is_active = true
+    AND key_hash = crypt(p_api_key, key_hash);
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Invalid or inactive API Key');
+  END IF;
+
+  -- 2. Update API key usage
+  UPDATE api_keys
+  SET last_used_at = now(), usage_count = usage_count + 1
+  WHERE id = v_key_record.id;
+
+  -- 3. Find or create middleware for this API key
+  SELECT * INTO v_middleware
+  FROM middlewares
+  WHERE api_key_id = v_key_record.id;
+
+  IF NOT FOUND THEN
+    INSERT INTO middlewares (
+      company_id, api_key_id, name, machine_name, status,
+      connections, metadata, is_active, active, last_seen_at, connected_at
+    ) VALUES (
+      v_key_record.company_id, v_key_record.id, v_key_record.name,
+      COALESCE(p_machine_name, 'Unknown'), 'online',
+      '{}', p_metadata, true, true, now(), now()
+    )
+    RETURNING * INTO v_middleware;
+  ELSE
+    UPDATE middlewares SET
+      status = 'online',
+      machine_name = COALESCE(p_machine_name, machine_name),
+      metadata = p_metadata,
+      last_seen_at = now(),
+      connected_at = now()
+    WHERE id = v_middleware.id
+    RETURNING * INTO v_middleware;
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'company_id', v_key_record.company_id,
+    'api_key_id', v_key_record.id,
+    'api_key_name', v_key_record.name,
+    'middleware_id', v_middleware.id,
+    'active', COALESCE(v_middleware.active, true),
+    'suspend_reason', v_middleware.suspend_reason
+  );
+END;
+$$;
+```
+
+### update_middleware_status
+
+```sql
+CREATE OR REPLACE FUNCTION update_middleware_status(
+  p_middleware_id UUID,
+  p_status TEXT,
+  p_connections JSONB,
+  p_metadata JSONB DEFAULT '{}'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_middleware middlewares%ROWTYPE;
+BEGIN
+  UPDATE middlewares SET
+    status = p_status,
+    connections = p_connections,
+    metadata = metadata || p_metadata,
+    last_seen_at = now(),
+    updated_at = now()
+  WHERE id = p_middleware_id
+  RETURNING * INTO v_middleware;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('success', false, 'error', 'Middleware not found');
+  END IF;
+
+  RETURN jsonb_build_object(
+    'success', true,
+    'active', COALESCE(v_middleware.active, true),
+    'suspend_reason', v_middleware.suspend_reason
+  );
+END;
+$$;
+```
+
+---
+
 **Remember:** This middleware is the bridge between cloud and local broadcast software. Reliability and low latency are critical.
