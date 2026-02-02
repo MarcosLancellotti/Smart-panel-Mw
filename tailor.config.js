@@ -1,7 +1,6 @@
-// tailor.config.js - Smart Panel Middleware Installer Builder
+// tailor.config.js - Smart Panel Middleware Build Configuration
 const fs = require('fs-extra');
 const path = require('path');
-const { execSync } = require('child_process');
 const archiver = require('archiver');
 
 const version = require('./package.json').version;
@@ -28,44 +27,54 @@ module.exports = {
     }
   ],
 
+  // macOS - DMG installer (drag to Applications)
   mac: {
-    target: 'dir',
+    target: 'dmg',
     icon: 'assets/icon.icns',
     identity: null,
     category: 'public.app-category.utilities'
   },
 
+  dmg: {
+    title: '${productName}',
+    icon: 'assets/icon.icns',
+    background: null,
+    contents: [
+      { x: 130, y: 220, type: 'file' },
+      { x: 410, y: 220, type: 'link', path: '/Applications' }
+    ],
+    window: {
+      width: 540,
+      height: 380
+    }
+  },
+
+  // Windows - Directory (we create custom installer)
   win: {
     target: [
       {
         target: 'dir',
-        arch: ['x64']  // x64 para la mayoría de PCs Windows
+        arch: ['x64']
       }
     ],
-    icon: 'assets/logo.png'  // electron-builder converts PNG to ICO automatically
+    icon: 'assets/logo.png'
   },
 
-  // Hook después de empaquetar cada plataforma
   afterPack: async (context) => {
-    const { appOutDir, electronPlatformName, arch } = context;
+    const { appOutDir, electronPlatformName } = context;
 
-    console.log(`\n🎨 Procesando build para ${electronPlatformName}-${arch}...`);
-    console.log(`   📁 Output dir: ${appOutDir}\n`);
-
-    if (electronPlatformName === 'darwin') {
-      await createMacInstaller(appOutDir, version, productName);
-    } else if (electronPlatformName === 'win32') {
+    // Only create custom installer for Windows
+    if (electronPlatformName === 'win32') {
       await createWindowsInstaller(appOutDir, version, productName);
     }
   },
 
-  afterAllArtifactBuild: async (buildResult) => {
-    console.log('\n✅ ¡BUILD COMPLETADO!\n');
-    console.log('📦 Artefactos generados:\n');
+  afterAllArtifactBuild: async () => {
+    console.log('\n✅ BUILD COMPLETED!\n');
+    console.log('📦 Generated artifacts:\n');
 
-    // List files in dist
     const distPath = path.join(__dirname, 'dist');
-    const files = fs.readdirSync(distPath).filter(f => f.endsWith('.zip'));
+    const files = fs.readdirSync(distPath).filter(f => f.endsWith('.dmg') || f.endsWith('.zip'));
     files.forEach(file => {
       const filePath = path.join(distPath, file);
       const stats = fs.statSync(filePath);
@@ -76,292 +85,22 @@ module.exports = {
 };
 
 /**
- * Crea instalador para macOS con GUI
- */
-async function createMacInstaller(outDir, version, productName) {
-  console.log('🍎 Creando instalador macOS con GUI...');
-
-  const installerDir = path.join(path.dirname(outDir), 'installer-macos');
-  const appName = `${productName}.app`;
-  const appPath = path.join(outDir, appName);
-
-  console.log(`  🔍 Buscando app en: ${appPath}`);
-
-  if (!fs.existsSync(appPath)) {
-    console.error(`❌ No se encontró ${appName} en ${outDir}`);
-    // List contents
-    try {
-      const contents = fs.readdirSync(outDir);
-      console.log(`   📁 Contenido de ${outDir}: ${contents.join(', ')}`);
-    } catch (e) {}
-    return;
-  }
-
-  await fs.remove(installerDir);
-  await fs.ensureDir(installerDir);
-
-  console.log('  📋 Copiando aplicación...');
-  await fs.copy(appPath, path.join(installerDir, appName));
-
-  // Crear script AppleScript del instalador
-  const applescriptContent = `#!/usr/bin/osascript
-
--- ${productName} - Instalador Visual
--- Versión: ${version}
-
-set appName to "${productName}"
-set appFile to "${productName}.app"
-
--- Ventana de bienvenida
-set welcomeMessage to "¡Bienvenido al instalador de " & appName & "!" & return & return & "Este asistente instalará la aplicación en tu Mac." & return & return & "Versión: ${version}" & return & "Build: ${new Date().toISOString().split('T')[0]}"
-
-set welcomeResponse to display dialog welcomeMessage buttons {"Cancelar", "Continuar"} default button "Continuar" with icon note with title appName
-
-if button returned of welcomeResponse is "Cancelar" then
-    return
-end if
-
--- Obtener ruta actual
-tell application "Finder"
-    set currentPath to POSIX path of ((container of (path to me)) as alias)
-end tell
-
-set sourcePath to currentPath & appFile
-set destPath to "/Applications/" & appFile
-
--- Verificar que existe la app en la carpeta
-try
-    do shell script "test -d " & quoted form of sourcePath
-on error
-    display dialog "❌ Error: No se encontró '" & appFile & "'" & return & return & "Asegúrate de ejecutar el instalador desde la carpeta descomprimida." buttons {"OK"} default button "OK" with icon stop with title "Error"
-    return
-end try
-
--- Verificar si ya existe una instalación previa
-try
-    do shell script "test -d " & quoted form of destPath
-
-    set replaceResponse to display dialog "⚠️ Ya existe una versión de " & appName & " instalada." & return & return & "¿Deseas reemplazarla con la nueva versión?" buttons {"Cancelar", "Reemplazar"} default button "Reemplazar" with icon caution with title "Versión existente detectada"
-
-    if button returned of replaceResponse is "Cancelar" then
-        return
-    end if
-
-    try
-        do shell script "rm -rf " & quoted form of destPath with administrator privileges
-    on error errMsg
-        display dialog "❌ Error al eliminar la versión anterior:" & return & errMsg buttons {"OK"} default button "OK" with icon stop with title "Error"
-        return
-    end try
-end try
-
--- Ventana de progreso
-display dialog "📦 Instalando " & appName & "..." & return & return & "Esto tomará solo unos segundos..." buttons {} giving up after 1 with icon note with title "Instalando"
-
--- Paso 1: Eliminar quarantine flag
-try
-    do shell script "xattr -cr " & quoted form of sourcePath
-on error
-    -- No crítico, continuar
-end try
-
--- Paso 2: Copiar a /Applications
-try
-    do shell script "cp -R " & quoted form of sourcePath & " " & quoted form of destPath with administrator privileges
-on error errMsg
-    display dialog "❌ Error durante la instalación:" & return & return & errMsg buttons {"OK"} default button "OK" with icon stop with title "Error de instalación"
-    return
-end try
-
--- Paso 3: Eliminar quarantine de la copia instalada
-try
-    do shell script "xattr -cr " & quoted form of destPath with administrator privileges
-on error
-    -- No crítico, continuar
-end try
-
--- Paso 4: Asegurar permisos de ejecución
-try
-    do shell script "chmod -R +x " & quoted form of destPath & "/Contents/MacOS/" with administrator privileges
-on error
-    -- No crítico, continuar
-end try
-
--- Ventana de éxito
-set successMessage to "✅ ¡Instalación completada!" & return & return & appName & " versión ${version} está listo para usar." & return & return & "Puedes encontrarlo en:" & return & "• Aplicaciones" & return & "• Launchpad" & return & "• Spotlight (Cmd+Space)" & return & return & "¿Deseas abrir la aplicación ahora?"
-
-set successResponse to display dialog successMessage buttons {"Cerrar", "Abrir " & appName} default button "Abrir " & appName with icon note with title "Instalación completada!"
-
-if button returned of successResponse is "Abrir " & appName then
-    try
-        do shell script "open " & quoted form of destPath
-    on error
-        display dialog "No se pudo abrir la aplicación automáticamente." & return & return & "Búscala en la carpeta Aplicaciones." buttons {"OK"} with icon note
-    end try
-end if
-`;
-
-  const scriptPath = path.join(installerDir, 'install.applescript');
-  await fs.writeFile(scriptPath, applescriptContent);
-
-  // Compilar AppleScript a aplicación
-  if (process.platform === 'darwin') {
-    try {
-      console.log('  🔨 Compilando instalador...');
-      const installerAppPath = path.join(installerDir, `Install ${productName}.app`);
-      execSync(`osacompile -o "${installerAppPath}" "${scriptPath}"`, { stdio: 'pipe' });
-      execSync(`chmod +x "${installerAppPath}/Contents/MacOS/applet"`, { stdio: 'pipe' });
-      await fs.remove(scriptPath);
-      console.log('  ✅ Instalador compilado');
-    } catch (error) {
-      console.warn('  ⚠️ No se pudo compilar AppleScript');
-    }
-  }
-
-  // Crear README
-  const readmeContent = `${productName.toUpperCase()} - macOS
-${'='.repeat(productName.length + 10)}
-
-VERSIÓN: ${version}
-FECHA: ${new Date().toISOString().split('T')[0]}
-
-INSTALACIÓN RÁPIDA (RECOMENDADO):
-==================================
-
-1. Haz doble clic en "Install ${productName}.app"
-2. Sigue las instrucciones en pantalla
-3. Si aparece un aviso de seguridad:
-   - Abre Preferencias del Sistema → Seguridad y Privacidad
-   - Haz clic en "Abrir de todas formas"
-
-INSTALACIÓN MANUAL:
-===================
-
-1. Arrastra "${productName}.app" a la carpeta Aplicaciones
-2. Abre Terminal y ejecuta:
-
-   xattr -cr "/Applications/${productName}.app"
-
-3. Ahora puedes abrir la aplicación normalmente
-
-DESINSTALACIÓN:
-===============
-
-Arrastra la app a la Papelera desde:
-/Applications/${productName}.app
-
-SOPORTE:
-========
-
-📧 Email: support@smart-panel.app
-🌐 Web: https://smart-panel.app
-
-================================
-Smart Panel © ${new Date().getFullYear()}
-`;
-
-  await fs.writeFile(path.join(installerDir, 'README.txt'), readmeContent);
-
-  // Crear script shell alternativo (más confiable cuando hay quarantine)
-  const shellInstaller = `#!/bin/bash
-# ${productName} - Instalador
-# Version: ${version}
-
-APP_NAME="${productName}"
-APP_FILE="${productName}.app"
-
-echo ""
-echo "======================================"
-echo "  $APP_NAME - Instalador"
-echo "  Version: ${version}"
-echo "======================================"
-echo ""
-
-SCRIPT_DIR="$( cd "$( dirname "\${BASH_SOURCE[0]}" )" && pwd )"
-SOURCE_PATH="$SCRIPT_DIR/$APP_FILE"
-DEST_PATH="/Applications/$APP_FILE"
-
-if [ ! -d "$SOURCE_PATH" ]; then
-    echo "Error: No se encontro '$APP_FILE'"
-    echo ""
-    echo "Asegurate de:"
-    echo "1. Descomprimir el ZIP completo"
-    echo "2. Ejecutar este script desde la carpeta descomprimida"
-    echo ""
-    read -p "Presiona Enter para cerrar..."
-    exit 1
-fi
-
-echo "Instalando $APP_NAME..."
-echo ""
-
-echo "  -> Removiendo bloqueo de seguridad..."
-xattr -cr "$SOURCE_PATH" 2>/dev/null
-
-if [ -d "$DEST_PATH" ]; then
-    echo "  Ya existe una version instalada."
-    read -p "  Reemplazar? (s/n): " REPLY
-    if [[ ! $REPLY =~ ^[Ss]$ ]]; then
-        echo "Instalacion cancelada."
-        exit 0
-    fi
-    echo "  -> Eliminando version anterior..."
-    sudo rm -rf "$DEST_PATH"
-fi
-
-echo "  -> Copiando a /Applications..."
-sudo cp -R "$SOURCE_PATH" "$DEST_PATH"
-
-echo "  -> Configurando permisos..."
-sudo xattr -cr "$DEST_PATH" 2>/dev/null
-sudo chmod -R +x "$DEST_PATH/Contents/MacOS/"
-
-echo ""
-echo "Instalacion completada!"
-echo ""
-echo "Puedes encontrar la app en:"
-echo "  - /Applications/$APP_FILE"
-echo "  - Launchpad"
-echo "  - Spotlight (Cmd+Space)"
-echo ""
-
-read -p "Abrir la aplicacion ahora? (s/n): " OPEN_APP
-if [[ $OPEN_APP =~ ^[Ss]$ ]]; then
-    open "$DEST_PATH"
-fi
-`;
-
-  await fs.writeFile(path.join(installerDir, 'install.command'), shellInstaller);
-  await fs.chmod(path.join(installerDir, 'install.command'), '755');
-
-  // Crear ZIP final
-  const zipPath = path.join(path.dirname(outDir), `Smart-Panel-Middleware-mac.zip`);
-  await createZip(installerDir, zipPath);
-
-  console.log(`  ✅ Instalador creado: Smart-Panel-Middleware-mac.zip`);
-
-  await fs.remove(installerDir);
-}
-
-/**
- * Crea instalador para Windows con GUI
+ * Creates Windows installer with GUI
  */
 async function createWindowsInstaller(outDir, version, productName) {
-  console.log('🪟 Creando instalador Windows con GUI...');
+  console.log('🪟 Creating Windows installer with GUI...');
 
   const installerDir = path.join(path.dirname(outDir), 'installer-windows');
-
-  // outDir ya es la carpeta con los archivos (ej: dist/win-arm64-unpacked)
   const actualAppPath = outDir;
 
   await fs.remove(installerDir);
   await fs.ensureDir(installerDir);
 
-  console.log('  📋 Copiando aplicación...');
+  console.log('  📋 Copying application...');
   await fs.copy(actualAppPath, path.join(installerDir, 'SmartPanelMiddleware'));
 
-  // Crear script PowerShell del instalador
-  const powershellContent = `# ${productName} - Instalador con GUI
+  // Create PowerShell installer script
+  const powershellContent = `# ${productName} - GUI Installer
 # Version: ${version}
 
 Add-Type -AssemblyName System.Windows.Forms
@@ -384,16 +123,16 @@ function Show-Confirm {
 }
 
 $welcomeMessage = @"
-Bienvenido al instalador de $appName!
+Welcome to the $appName installer!
 
-Este asistente instalara la aplicacion en tu PC.
+This wizard will install the application on your PC.
 
 Version: $version
 
-Deseas continuar con la instalacion?
+Do you want to continue with the installation?
 "@
 
-if (-not (Show-Confirm "$appName - Instalador" $welcomeMessage)) {
+if (-not (Show-Confirm "$appName - Installer" $welcomeMessage)) {
     exit
 }
 
@@ -402,14 +141,14 @@ $sourcePath = Join-Path $scriptPath $appFolder
 $destPath = Join-Path $env:ProgramFiles $appFolder
 
 if (-not (Test-Path $sourcePath)) {
-    Show-Message "Error" "No se encontro la carpeta '$appFolder'" "Error"
+    Show-Message "Error" "Could not find the '$appFolder' folder" "Error"
     exit
 }
 
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 
 if (-not $isAdmin) {
-    $relaunch = Show-Confirm "Se requieren permisos de administrador" "Este instalador necesita permisos de administrador.\`n\`nDeseas continuar?"
+    $relaunch = Show-Confirm "Administrator privileges required" "This installer needs administrator privileges.\`n\`nDo you want to continue?"
 
     if ($relaunch) {
         Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File \`"$($MyInvocation.MyCommand.Path)\`"" -Verb RunAs
@@ -420,7 +159,7 @@ if (-not $isAdmin) {
 }
 
 if (Test-Path $destPath) {
-    $replace = Show-Confirm "Version existente" "Ya existe una version instalada.\`n\`nDeseas reemplazarla?"
+    $replace = Show-Confirm "Existing version" "A version is already installed.\`n\`nDo you want to replace it?"
 
     if (-not $replace) {
         exit
@@ -431,7 +170,7 @@ if (Test-Path $destPath) {
         $running = Get-Process -Name $processName -ErrorAction SilentlyContinue
 
         if ($running) {
-            $close = Show-Confirm "Aplicacion en ejecucion" "$appName esta corriendo.\`n\`nDeseas cerrarla para continuar?"
+            $close = Show-Confirm "Application running" "$appName is currently running.\`n\`nDo you want to close it to continue?"
 
             if ($close) {
                 Stop-Process -Name $processName -Force
@@ -445,14 +184,14 @@ if (Test-Path $destPath) {
     try {
         Remove-Item -Path $destPath -Recurse -Force -ErrorAction Stop
     } catch {
-        Show-Message "Error" "No se pudo eliminar la version anterior." "Error"
+        Show-Message "Error" "Could not remove the previous version." "Error"
         exit
     }
 }
 
 # Progress window
 $form = New-Object System.Windows.Forms.Form
-$form.Text = "Instalando $appName"
+$form.Text = "Installing $appName"
 $form.Size = New-Object System.Drawing.Size(400, 150)
 $form.StartPosition = "CenterScreen"
 $form.FormBorderStyle = "FixedDialog"
@@ -461,7 +200,7 @@ $form.MinimizeBox = $false
 $form.TopMost = $true
 
 $label = New-Object System.Windows.Forms.Label
-$label.Text = "Instalando $appName v$version...\`n\`nEsto tomara solo unos segundos."
+$label.Text = "Installing $appName v$version...\`n\`nThis will only take a few seconds."
 $label.AutoSize = $false
 $label.Size = New-Object System.Drawing.Size(360, 50)
 $label.Location = New-Object System.Drawing.Point(20, 20)
@@ -481,13 +220,13 @@ try {
     Start-Sleep -Milliseconds 800
 } catch {
     $form.Close()
-    Show-Message "Error" "Error durante la instalacion." "Error"
+    Show-Message "Error" "Error during installation." "Error"
     exit
 }
 
 $form.Close()
 
-$createShortcut = Show-Confirm "Acceso directo" "Deseas crear un acceso directo en el escritorio?"
+$createShortcut = Show-Confirm "Desktop shortcut" "Do you want to create a desktop shortcut?"
 
 if ($createShortcut) {
     try {
@@ -510,7 +249,7 @@ try {
     $shortcut.Save()
 } catch {}
 
-$launch = Show-Confirm "Instalacion completada!" "Instalacion completada!\`n\`n$appName v$version esta listo.\`n\`nDeseas abrir la aplicacion ahora?"
+$launch = Show-Confirm "Installation complete!" "Installation completed!\`n\`n$appName v$version is ready.\`n\`nDo you want to open the application now?"
 
 if ($launch) {
     try {
@@ -521,61 +260,61 @@ if ($launch) {
 
   await fs.writeFile(path.join(installerDir, 'install.ps1'), powershellContent);
 
-  // Crear batch launcher
+  // Create batch launcher
   const batchContent = `@echo off
-title ${productName} - Instalador v${version}
+title ${productName} - Installer v${version}
 echo.
 echo =====================================
 echo  ${productName}
-echo  Instalador v${version}
+echo  Installer v${version}
 echo =====================================
 echo.
-echo Iniciando instalador...
+echo Starting installer...
 echo.
 
 powershell.exe -ExecutionPolicy Bypass -NoProfile -File "%~dp0install.ps1"
 
 if %errorlevel% neq 0 (
     echo.
-    echo Error durante la instalacion.
+    echo Error during installation.
     pause
 )
 `;
 
   await fs.writeFile(path.join(installerDir, 'Install.bat'), batchContent);
 
-  // Crear README
+  // Create README
   const readmeContent = `${productName.toUpperCase()} - Windows
 ${'='.repeat(productName.length + 12)}
 
 VERSION: ${version}
-FECHA: ${new Date().toISOString().split('T')[0]}
+DATE: ${new Date().toISOString().split('T')[0]}
 
-INSTALACION RAPIDA:
+QUICK INSTALLATION:
 ===================
 
-1. Haz doble clic en "Install.bat"
-2. Si aparece "Windows protegió tu PC":
-   - Clic en "Más información"
-   - Luego en "Ejecutar de todas formas"
-3. Sigue las instrucciones
+1. Double-click "Install.bat"
+2. If "Windows protected your PC" appears:
+   - Click "More info"
+   - Then click "Run anyway"
+3. Follow the instructions
 
-INSTALACION MANUAL:
-===================
+MANUAL INSTALLATION:
+====================
 
-1. Copia la carpeta "SmartPanelMiddleware" a:
+1. Copy the "SmartPanelMiddleware" folder to:
    C:\\Program Files\\SmartPanelMiddleware
 
-2. Crea un acceso directo a:
+2. Create a shortcut to:
    C:\\Program Files\\SmartPanelMiddleware\\${productName}.exe
 
-DESINSTALACION:
+UNINSTALLATION:
 ===============
 
-Elimina la carpeta:
+Delete the folder:
 C:\\Program Files\\SmartPanelMiddleware
 
-SOPORTE:
+SUPPORT:
 ========
 
 Email: support@smart-panel.app
@@ -587,17 +326,17 @@ Smart Panel (c) ${new Date().getFullYear()}
 
   await fs.writeFile(path.join(installerDir, 'README.txt'), readmeContent);
 
-  // Crear ZIP final
+  // Create ZIP
   const zipPath = path.join(path.dirname(outDir), `Smart-Panel-Middleware-win.zip`);
   await createZip(installerDir, zipPath);
 
-  console.log(`  ✅ Instalador creado: Smart-Panel-Middleware-win.zip`);
+  console.log(`  ✅ Installer created: Smart-Panel-Middleware-win.zip`);
 
   await fs.remove(installerDir);
 }
 
 /**
- * Crea un archivo ZIP
+ * Creates a ZIP file
  */
 function createZip(sourceDir, outputPath) {
   return new Promise((resolve, reject) => {
@@ -606,7 +345,7 @@ function createZip(sourceDir, outputPath) {
 
     output.on('close', () => {
       const sizeMB = (archive.pointer() / 1024 / 1024).toFixed(2);
-      console.log(`  📦 ZIP creado: ${sizeMB} MB`);
+      console.log(`  📦 ZIP created: ${sizeMB} MB`);
       resolve();
     });
 

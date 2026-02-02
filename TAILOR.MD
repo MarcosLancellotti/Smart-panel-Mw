@@ -78,7 +78,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 | vMix | HTTP API (fetch) |
 | Logging | winston + daily-rotate-file |
 | Build | electron-builder |
-| Packaging | ZIP with GUI installer scripts |
+| Packaging | DMG (macOS), ZIP with GUI installer (Windows) |
 
 ---
 
@@ -86,14 +86,14 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 ```
 smart-panel-middleware/
-├── package.json              # v1.4.1
+├── package.json              # v1.4.2
 ├── tsconfig.json
-├── tailor.config.js          # electron-builder + custom installers
+├── tailor.config.js          # electron-builder config
 ├── README.md                 # User installation guide
 ├── TAILOR.MD                 # This file (AI context)
 ├── assets/
-│   ├── icon.icns
-│   └── logo.png
+│   ├── icon.icns             # macOS app icon
+│   └── logo.png              # Windows app icon
 ├── src/
 │   ├── main/
 │   │   ├── main.ts           # Electron main process
@@ -112,7 +112,7 @@ smart-panel-middleware/
 │       └── config.ts
 ├── build/                    # TypeScript output
 └── dist/                     # electron-builder output
-    ├── Smart-Panel-Middleware-mac.zip
+    ├── Smart-Panel-Middleware-mac.dmg
     └── Smart-Panel-Middleware-win.zip
 ```
 
@@ -269,24 +269,24 @@ npm run dev:watch    # Watch mode
 
 ### Production Build
 ```bash
-npm run build:mac    # macOS (Apple Silicon)
-npm run build:exe    # Windows (x64)
+npm run build:mac    # macOS DMG (Apple Silicon)
+npm run build:exe    # Windows ZIP with installer
 npm run build:all    # Both platforms
 ```
 
 ### Output
 ```
 dist/
-├── Smart-Panel-Middleware-mac.zip   # Contains app + install.command
-└── Smart-Panel-Middleware-win.zip   # Contains app + Install.bat
+├── Smart-Panel-Middleware-mac.dmg   # macOS installer (drag to Applications)
+└── Smart-Panel-Middleware-win.zip   # Windows (contains Install.bat)
 ```
 
 ### GitHub Release
 ```bash
-gh release create v1.4.1 \
-  "./dist/Smart-Panel-Middleware-mac.zip" \
+gh release create v1.4.2 \
+  "./dist/Smart-Panel-Middleware-mac.dmg" \
   "./dist/Smart-Panel-Middleware-win.zip" \
-  --title "v1.4.1 - Description" \
+  --title "v1.4.2 - Description" \
   --notes "Release notes..."
 ```
 
@@ -294,9 +294,10 @@ gh release create v1.4.1 \
 
 ## RECENT CHANGES (v1.4.x)
 
-### v1.4.2 (2026-01-07)
+### v1.4.2 (2026-02-02)
+- Changed macOS packaging from ZIP to DMG installer
+- All installer texts now in English
 - Fixed Windows app icon (was showing default Electron icon)
-- Updated tailor.config.js to use PNG for Windows icon conversion
 
 ### v1.4.1 (2026-01-07)
 - Real-time OBS/vMix status updates (instant UI feedback)
@@ -328,28 +329,15 @@ gh release create v1.4.1 \
 | `src/services/VMixService.ts` | vMix HTTP API integration |
 | `src/main/preload.ts` | IPC bridge (exposes APIs to renderer) |
 | `src/renderer/index.html` | UI with status cards, config form, logs |
-| `tailor.config.js` | electron-builder config + custom installer hooks |
-
----
-
-## COMMUNICATION STYLE
-
-- **Language:** Spanish with Marcos, English for code/commits
-- **Approach:** Direct solutions, no lengthy explanations unless asked
-- **Code:** Complete files, proper TypeScript types, error handling
-- **Commits:** Conventional commits in English
+| `tailor.config.js` | electron-builder config |
 
 ---
 
 ## DOWNLOAD URLS
 
 **Latest Release:**
-- Mac: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-mac.zip`
+- Mac: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-mac.dmg`
 - Windows: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-win.zip`
-
-**Specific Version (v1.4.1):**
-- Mac: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/download/v1.4.1/Smart-Panel-Middleware-mac.zip`
-- Windows: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/download/v1.4.1/Smart-Panel-Middleware-win.zip`
 
 ---
 
