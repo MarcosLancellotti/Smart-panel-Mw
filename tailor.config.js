@@ -71,20 +71,15 @@ module.exports = {
 
   afterAllArtifactBuild: async () => {
     const distPath = path.join(__dirname, 'dist');
-    const pdfSource = path.join(__dirname, 'assets', 'Installation_Guide.pdf');
 
-    // Create macOS ZIP with DMG + PDF
+    // Rename DMG to standard name for GitHub Releases
     const dmgFile = fs.readdirSync(distPath).find(f => f.endsWith('.dmg') && !f.includes('blockmap'));
-    if (dmgFile && fs.existsSync(pdfSource)) {
-      const macZipDir = path.join(distPath, 'mac-zip-temp');
-      await fs.ensureDir(macZipDir);
-      await fs.copy(path.join(distPath, dmgFile), path.join(macZipDir, 'Smart-Panel-Middleware-mac.dmg'));
-      await fs.copy(pdfSource, path.join(macZipDir, 'Installation_Guide.pdf'));
-
-      const macZipPath = path.join(distPath, 'Smart-Panel-Middleware-mac.zip');
-      await createZip(macZipDir, macZipPath);
-      await fs.remove(macZipDir);
-      console.log('  📦 macOS ZIP created (DMG + Installation Guide)');
+    if (dmgFile && dmgFile !== 'Smart-Panel-Middleware-mac.dmg') {
+      await fs.move(
+        path.join(distPath, dmgFile),
+        path.join(distPath, 'Smart-Panel-Middleware-mac.dmg'),
+        { overwrite: true }
+      );
     }
 
     console.log('\n✅ BUILD COMPLETED!\n');
@@ -341,13 +336,6 @@ Smart Panel (c) ${new Date().getFullYear()}
 `;
 
   await fs.writeFile(path.join(installerDir, 'README.txt'), readmeContent);
-
-  // Copy Installation Guide PDF if it exists
-  const pdfSource = path.join(__dirname, 'assets', 'Installation_Guide.pdf');
-  if (fs.existsSync(pdfSource)) {
-    await fs.copy(pdfSource, path.join(installerDir, 'Installation_Guide.pdf'));
-    console.log('  📄 Installation Guide PDF included');
-  }
 
   // Create ZIP
   const zipPath = path.join(path.dirname(outDir), `Smart-Panel-Middleware-win.zip`);

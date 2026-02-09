@@ -10,7 +10,7 @@ const GITHUB_REPO = 'Smart-panel-Mw';
 const CHECK_DELAY_MS = 5000;
 
 // Asset names in GitHub Releases
-const MAC_ASSET = 'Smart-Panel-Middleware-mac.zip';
+const MAC_ASSET = 'Smart-Panel-Middleware-mac.dmg';
 const WIN_ASSET = 'Smart-Panel-Middleware-win.zip';
 
 export interface UpdateStatus {
