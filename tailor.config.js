@@ -326,6 +326,13 @@ Smart Panel (c) ${new Date().getFullYear()}
 
   await fs.writeFile(path.join(installerDir, 'README.txt'), readmeContent);
 
+  // Copy Installation Guide PDF if it exists
+  const pdfSource = path.join(__dirname, 'assets', 'Installation_Guide.pdf');
+  if (fs.existsSync(pdfSource)) {
+    await fs.copy(pdfSource, path.join(installerDir, 'Installation_Guide.pdf'));
+    console.log('  📄 Installation Guide PDF included');
+  }
+
   // Create ZIP
   const zipPath = path.join(path.dirname(outDir), `Smart-Panel-Middleware-win.zip`);
   await createZip(installerDir, zipPath);

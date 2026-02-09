@@ -99,11 +99,42 @@ You can find the app in:
 
 ---
 
+## Updating the App
+
+When a new version is available, the app will show a purple banner at the top:
+
+```
+New version v1.5.0 available!    [Update]  [✕]
+```
+
+### Option 1: One-click update (Recommended)
+
+1. Click the **"Update"** button in the banner
+2. The app will download the new version automatically (you'll see a progress bar)
+3. Once downloaded, the installer will open and the app will close
+4. **macOS:** Drag the new app to Applications (replace the existing one)
+5. **Windows:** Run the installer as usual (it will replace the old version)
+6. Open the app again — your configuration is preserved
+
+### Option 2: Manual update
+
+1. Click the **"✕"** to dismiss the banner
+2. Download the new version manually from: https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest
+3. Install it following the same steps as the first installation (see above)
+
+### Notes
+
+- Your **API key, OBS, and vMix settings are preserved** after updating — they are stored separately from the app
+- If an admin sends a critical update notification, the banner will appear in **red** and cannot be dismissed
+- The app checks for updates automatically on startup. You can disable this in the config file by setting `checkUpdates` to `false`
+
+---
+
 ## Troubleshooting
 
 ### Mac: "Smart Panel Middleware is damaged and can't be opened"
 
-This means the security block was not removed. Follow Step 5 again.
+This means the security block was not removed. Follow Step 5 from the macOS installation.
 
 Open Terminal and run:
 ```

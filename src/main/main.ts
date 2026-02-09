@@ -6,6 +6,7 @@ import { ConnectorConfig } from '../types/config';
 import { SupabaseService, CommandPayload } from '../services/SupabaseService';
 import { OBSService } from '../services/OBSService';
 import { VMixService } from '../services/VMixService';
+import { UpdateChecker } from '../services/UpdateChecker';
 
 // Get icon path based on platform
 function getIconPath(): string {
@@ -24,6 +25,7 @@ let configManager: ConfigManager;
 let supabaseService: SupabaseService;
 let obsService: OBSService;
 let vmixService: VMixService;
+let updateChecker: UpdateChecker;
 
 // Check for headless/service mode
 const isHeadless = process.argv.includes('--headless') || process.argv.includes('--service');
@@ -123,6 +125,7 @@ function createWindow(): void {
       mainWindow?.focus();
     }
     logger.info('Main window ready');
+    updateChecker.setWindow(mainWindow);
   });
 
   // Minimize to tray instead of closing (if runAsService is enabled)
@@ -137,6 +140,7 @@ function createWindow(): void {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    updateChecker.setWindow(null);
   });
 }
 
@@ -621,6 +625,19 @@ function initializeApp(): void {
     });
   }
 
+  // Set up update notification callback (push from admin)
+  supabaseService.onUpdateNotify((info) => {
+    logger.info(`[Updater] Push notification from admin: v${info.version}`);
+    if (mainWindow) {
+      mainWindow.webContents.send('update-status', {
+        status: 'available',
+        version: info.version,
+        message: info.message,
+        required: info.required
+      });
+    }
+  });
+
   // Set up suspend callback
   supabaseService.onSuspendChange((info) => {
     logger.info(`[API] Suspend state changed: ${JSON.stringify(info)}`);
@@ -679,6 +696,12 @@ function initializeApp(): void {
           logger.warn(`[API] Auto-connect failed: ${result.error}`);
         }
       });
+  }
+
+  // Initialize update checker
+  updateChecker = new UpdateChecker(logger, app.getVersion());
+  if (config.settings?.checkUpdates !== false) {
+    updateChecker.checkOnStartup();
   }
 
   logger.info('Application initialized');
@@ -842,6 +865,20 @@ function setupIpcHandlers(): void {
   ipcMain.handle('get-vmix-status', (): { connected: boolean; version?: string } => {
     const status = vmixService.getStatus();
     return { connected: status.connected, version: status.version };
+  });
+
+  // Update checker
+  ipcMain.handle('check-for-updates', async (): Promise<void> => {
+    await updateChecker.checkForUpdates();
+  });
+
+  ipcMain.handle('open-release-page', (): void => {
+    updateChecker.openReleasePage();
+  });
+
+  ipcMain.handle('download-and-install', async (): Promise<void> => {
+    logger.info('[Updater] Download and install requested');
+    await updateChecker.downloadAndInstall();
   });
 }
 

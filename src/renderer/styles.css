@@ -68,6 +68,87 @@ body {
   border-radius: 4px;
 }
 
+/* Update Banner */
+.update-banner {
+  background: var(--primary);
+  color: white;
+  font-size: 13px;
+}
+
+.update-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  gap: 12px;
+}
+
+.update-text {
+  flex: 1;
+}
+
+.update-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-update {
+  padding: 5px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid white;
+  background: transparent;
+  color: white;
+  transition: all 0.2s;
+}
+
+.btn-update:hover {
+  background: white;
+  color: var(--primary);
+}
+
+.btn-update:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-update-dismiss {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+
+.btn-update-dismiss:hover {
+  color: white;
+}
+
+.update-progress {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.update-progress-bar {
+  height: 100%;
+  background: white;
+  width: 0%;
+  transition: width 0.3s;
+}
+
+.update-banner.update-required {
+  background: var(--error);
+}
+
+.update-required .btn-update:hover {
+  color: var(--error);
+}
+
 /* Navigation */
 .nav {
   display: flex;

@@ -64,6 +64,7 @@ export class SupabaseService {
   private retryInterval: NodeJS.Timeout | null = null;
   private onCommandCallback: ((command: CommandPayload) => void) | null = null;
   private onSuspendCallback: ((info: SuspendInfo) => void) | null = null;
+  private onUpdateNotifyCallback: ((info: { version: string; message?: string; required?: boolean }) => void) | null = null;
   private suspended: boolean = false;
   private suspendReason: string | null = null;
   private savedApiKey: string | null = null;
@@ -319,6 +320,26 @@ export class SupabaseService {
         }
 
         this.handleResume();
+        return;
+      }
+
+      // Handle middleware_update_notify - push update notification from admin
+      if (cmd.action === 'middleware_update_notify') {
+        const version = (cmd.params?.version as string) || 'unknown';
+        const message = (cmd.params?.message as string) || undefined;
+        const required = (cmd.params?.required as boolean) || false;
+        this.logger.info(`🔄 Update notification from admin: v${version}`);
+
+        if (cmd.response_channel) {
+          await this.sendResponse(cmd.request_id!, {
+            success: true,
+            data: { acknowledged: true }
+          }, cmd.response_channel);
+        }
+
+        if (this.onUpdateNotifyCallback) {
+          this.onUpdateNotifyCallback({ version, message, required });
+        }
         return;
       }
 
@@ -660,6 +681,10 @@ export class SupabaseService {
    */
   onSuspendChange(callback: (info: SuspendInfo) => void): void {
     this.onSuspendCallback = callback;
+  }
+
+  onUpdateNotify(callback: (info: { version: string; message?: string; required?: boolean }) => void): void {
+    this.onUpdateNotifyCallback = callback;
   }
 
   /**

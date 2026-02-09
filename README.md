@@ -2,31 +2,18 @@
 
 Local middleware for Smart Panel - Bridge between cloud and OBS/vMix.
 
-## Download
-
-| Platform | Download |
-|----------|----------|
-| **Mac (Apple Silicon)** | [Smart-Panel-Middleware-mac.zip](https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-mac.zip) |
-| **Windows (64-bit)** | [Smart-Panel-Middleware-win.zip](https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-win.zip) |
-
----
-
 ## Installation
 
 ### Mac
 
-1. **Download** `Smart-Panel-Middleware-mac.zip`
-2. **Unzip** the file (double-click)
-3. **Open Terminal** and run:
+1. **Download** `Smart-Panel-Middleware-mac.dmg`
+2. **Double-click** the DMG file to open it
+3. **Drag** the app to the Applications folder
+4. **Remove security block** — open Terminal and run:
    ```bash
-   cd ~/Downloads/Smart-Panel-Middleware-mac
-   chmod +x install.command
-   ./install.command
+   xattr -cr /Applications/Smart\ Panel\ Middleware.app
    ```
-   Or double-click `install.command`
-4. **Follow the prompts** to install
-
-> **Note:** If you see "file is damaged", run: `xattr -cr ~/Downloads/Smart-Panel-Middleware-mac`
+5. Open the app from Spotlight or Applications
 
 ### Windows
 
@@ -107,4 +94,4 @@ Local middleware for Smart Panel - Bridge between cloud and OBS/vMix.
 
 ## License
 
-Private - Smart Panel © 2024
+Private - Smart Panel © 2026

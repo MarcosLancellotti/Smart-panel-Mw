@@ -47,6 +47,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onVMixStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => {
     ipcRenderer.on('vmix-status-changed', (_event, status) => callback(status));
+  },
+
+  // Update checker
+  checkForUpdates: (): Promise<void> => ipcRenderer.invoke('check-for-updates'),
+  openReleasePage: (): Promise<void> => ipcRenderer.invoke('open-release-page'),
+  downloadAndInstall: (): Promise<void> => ipcRenderer.invoke('download-and-install'),
+  onUpdateStatus: (callback: (status: { status: string; version?: string; downloadUrl?: string; message?: string; required?: boolean; error?: string }) => void) => {
+    ipcRenderer.on('update-status', (_event, status) => callback(status));
   }
 });
 
@@ -72,6 +80,10 @@ declare global {
       getVMixStatus: () => Promise<{ connected: boolean; version?: string }>;
       onOBSStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => void;
       onVMixStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => void;
+      checkForUpdates: () => Promise<void>;
+      openReleasePage: () => Promise<void>;
+      downloadAndInstall: () => Promise<void>;
+      onUpdateStatus: (callback: (status: { status: string; version?: string; downloadUrl?: string; message?: string; required?: boolean; error?: string }) => void) => void;
     };
   }
 }
