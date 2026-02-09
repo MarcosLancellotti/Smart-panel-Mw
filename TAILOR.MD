@@ -10,7 +10,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.4.2 |
+| **Version** | 1.4.3 |
 | **Platforms** | macOS (Apple Silicon), Windows (x64) |
 | **Framework** | Electron 28 + TypeScript |
 | **Cloud** | Supabase Realtime (WebSocket) |
@@ -86,14 +86,15 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 ```
 smart-panel-middleware/
-├── package.json              # v1.4.2
+├── package.json              # v1.4.3
 ├── tsconfig.json
 ├── tailor.config.js          # electron-builder config
 ├── README.md                 # User installation guide
 ├── TAILOR.MD                 # This file (AI context)
 ├── assets/
 │   ├── icon.icns             # macOS app icon
-│   └── logo.png              # Windows app icon
+│   ├── logo.png              # Windows app icon
+│   └── Installation_Guide.pdf # PDF included in Windows ZIP
 ├── src/
 │   ├── main/
 │   │   ├── main.ts           # Electron main process
@@ -104,7 +105,8 @@ smart-panel-middleware/
 │   ├── services/
 │   │   ├── SupabaseService.ts  # Cloud connection
 │   │   ├── OBSService.ts       # OBS WebSocket
-│   │   └── VMixService.ts      # vMix HTTP
+│   │   ├── VMixService.ts      # vMix HTTP
+│   │   └── UpdateChecker.ts    # Version check + one-click update
 │   ├── core/
 │   │   ├── ConfigManager.ts    # config.json
 │   │   └── LogManager.ts       # winston logging
@@ -283,16 +285,74 @@ dist/
 
 ### GitHub Release
 ```bash
-gh release create v1.4.2 \
+gh release create v1.4.3 \
   "./dist/Smart-Panel-Middleware-mac.dmg" \
   "./dist/Smart-Panel-Middleware-win.zip" \
-  --title "v1.4.2 - Description" \
+  --title "v1.4.3 - Description" \
   --notes "Release notes..."
 ```
 
 ---
 
+## UPDATE SYSTEM
+
+### How It Works
+
+Two triggers can show the update banner:
+
+1. **Automatic check (GitHub API):** On startup (5s delay), `UpdateChecker` calls `api.github.com/repos/MarcosLancellotti/Smart-panel-Mw/releases/latest`, compares `tag_name` with `app.getVersion()`. If newer → shows banner.
+
+2. **Admin push (Supabase Realtime):** Admin sends `middleware_update_notify` command via broadcast channel. Middleware receives it and shows banner immediately.
+
+### Update Flow (User Perspective)
+
+```
+Banner appears → Click "Update" → Download with progress bar →
+File opens (DMG/ZIP) → App closes → User installs → Done
+```
+
+### Admin Push Command
+
+```typescript
+// Send from Smart Panel Cloud to a specific middleware channel
+channel.send({
+  type: 'broadcast',
+  event: 'command',
+  payload: {
+    action: 'middleware_update_notify',
+    params: {
+      version: '1.5.0',                         // required
+      message: 'Security fix - please update',  // optional
+      required: false                             // optional (true = red banner, no dismiss)
+    }
+  }
+});
+```
+
+### Config Flag
+
+`settings.checkUpdates` (boolean, default: `true`) — controls automatic GitHub check on startup. Admin push notifications are always received regardless of this flag.
+
+### Key Files
+
+| File | Role |
+|------|------|
+| `src/services/UpdateChecker.ts` | GitHub API check, download, version compare |
+| `src/services/SupabaseService.ts` | `middleware_update_notify` handler + `onUpdateNotify` callback |
+| `src/main/main.ts` | IPC handlers: `check-for-updates`, `open-release-page`, `download-and-install` |
+| `src/main/preload.ts` | Exposed: `checkForUpdates`, `openReleasePage`, `downloadAndInstall`, `onUpdateStatus` |
+
+---
+
 ## RECENT CHANGES (v1.4.x)
+
+### v1.4.3 (2026-02-09)
+- Update checker via GitHub Releases API (check on startup, one-click download)
+- `middleware_update_notify` command for admin push notifications
+- Update banner UI with progress bar, required/dismissable modes
+- Wired `checkUpdates` config flag (was dead code)
+- Installation Guide PDF included in Windows ZIP
+- README: removed GitHub URLs, fixed macOS download link, license updated to 2026
 
 ### v1.4.2 (2026-02-02)
 - Changed macOS packaging from ZIP to DMG installer
@@ -327,6 +387,7 @@ gh release create v1.4.2 \
 | `src/services/SupabaseService.ts` | Cloud connection, auth, heartbeat, suspend/resume |
 | `src/services/OBSService.ts` | OBS WebSocket v5 integration |
 | `src/services/VMixService.ts` | vMix HTTP API integration |
+| `src/services/UpdateChecker.ts` | GitHub API version check, one-click download & install |
 | `src/main/preload.ts` | IPC bridge (exposes APIs to renderer) |
 | `src/renderer/index.html` | UI with status cards, config form, logs |
 | `tailor.config.js` | electron-builder config |
