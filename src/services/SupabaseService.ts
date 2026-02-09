@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
 import os from 'os';
+import path from 'path';
+import fs from 'fs';
 import WebSocket from 'ws';
 import { LogManager } from '../core/LogManager';
 
@@ -9,7 +11,16 @@ import { LogManager } from '../core/LogManager';
 const SUPABASE_URL = 'https://vlxgdsqawtscusdkxbyv.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZseGdkc3Fhd3RzY3VzZGt4Ynl2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjMzNzYzOTEsImV4cCI6MjA3ODk1MjM5MX0.1GZdjLooB4BwE-OSPj46Ju-IPTpvUyCB2GHMzlSngb8';
 
-const APP_VERSION = '1.4.2';
+// Read version from package.json so we only update it in one place
+const APP_VERSION = (() => {
+  try {
+    const pkgPath = path.join(__dirname, '..', '..', 'package.json');
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+    return pkg.version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 export interface AuthResult {
   success: boolean;
