@@ -78,7 +78,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 | vMix | HTTP API (fetch) |
 | Logging | winston + daily-rotate-file |
 | Build | electron-builder |
-| Packaging | DMG (macOS), ZIP with GUI installer (Windows) |
+| Packaging | ZIP with DMG + PDF (macOS), ZIP with GUI installer (Windows) |
 
 ---
 
@@ -114,7 +114,7 @@ smart-panel-middleware/
 │       └── config.ts
 ├── build/                    # TypeScript output
 └── dist/                     # electron-builder output
-    ├── Smart-Panel-Middleware-mac.dmg
+    ├── Smart-Panel-Middleware-mac.zip
     └── Smart-Panel-Middleware-win.zip
 ```
 
@@ -286,7 +286,7 @@ dist/
 ### GitHub Release
 ```bash
 gh release create v1.4.3 \
-  "./dist/Smart-Panel-Middleware-mac.dmg" \
+  "./dist/Smart-Panel-Middleware-mac.zip" \
   "./dist/Smart-Panel-Middleware-win.zip" \
   --title "v1.4.3 - Description" \
   --notes "Release notes..."
@@ -397,7 +397,7 @@ channel.send({
 ## DOWNLOAD URLS
 
 **Latest Release:**
-- Mac: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-mac.dmg`
+- Mac: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-mac.zip`
 - Windows: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-win.zip`
 
 ---

@@ -63,17 +63,33 @@ module.exports = {
   afterPack: async (context) => {
     const { appOutDir, electronPlatformName } = context;
 
-    // Only create custom installer for Windows
+    // Create custom installer for Windows
     if (electronPlatformName === 'win32') {
       await createWindowsInstaller(appOutDir, version, productName);
     }
   },
 
   afterAllArtifactBuild: async () => {
+    const distPath = path.join(__dirname, 'dist');
+    const pdfSource = path.join(__dirname, 'assets', 'Installation_Guide.pdf');
+
+    // Create macOS ZIP with DMG + PDF
+    const dmgFile = fs.readdirSync(distPath).find(f => f.endsWith('.dmg') && !f.includes('blockmap'));
+    if (dmgFile && fs.existsSync(pdfSource)) {
+      const macZipDir = path.join(distPath, 'mac-zip-temp');
+      await fs.ensureDir(macZipDir);
+      await fs.copy(path.join(distPath, dmgFile), path.join(macZipDir, 'Smart-Panel-Middleware-mac.dmg'));
+      await fs.copy(pdfSource, path.join(macZipDir, 'Installation_Guide.pdf'));
+
+      const macZipPath = path.join(distPath, 'Smart-Panel-Middleware-mac.zip');
+      await createZip(macZipDir, macZipPath);
+      await fs.remove(macZipDir);
+      console.log('  📦 macOS ZIP created (DMG + Installation Guide)');
+    }
+
     console.log('\n✅ BUILD COMPLETED!\n');
     console.log('📦 Generated artifacts:\n');
 
-    const distPath = path.join(__dirname, 'dist');
     const files = fs.readdirSync(distPath).filter(f => f.endsWith('.dmg') || f.endsWith('.zip'));
     files.forEach(file => {
       const filePath = path.join(distPath, file);
