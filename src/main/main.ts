@@ -6,6 +6,7 @@ import { ConnectorConfig } from '../types/config';
 import { SupabaseService, CommandPayload } from '../services/SupabaseService';
 import { OBSService } from '../services/OBSService';
 import { VMixService } from '../services/VMixService';
+import { CasparCGService } from '../services/CasparCGService';
 import { UpdateChecker } from '../services/UpdateChecker';
 
 // Get icon path based on platform
@@ -25,6 +26,7 @@ let configManager: ConfigManager;
 let supabaseService: SupabaseService;
 let obsService: OBSService;
 let vmixService: VMixService;
+let casparService: CasparCGService;
 let updateChecker: UpdateChecker;
 
 // Check for headless/service mode
@@ -148,6 +150,7 @@ function createWindow(): void {
 function getConnections() {
   const obsStatus = obsService.getStatus();
   const vmixStatus = vmixService.getStatus();
+  const casparStatus = casparService.getStatus();
   return {
     obs: {
       connected: obsStatus.connected,
@@ -160,6 +163,11 @@ function getConnections() {
       version: vmixStatus.version,
       host: vmixStatus.host,
       port: vmixStatus.port
+    },
+    casparcg: {
+      connected: casparStatus.connected,
+      host: casparStatus.host,
+      port: casparStatus.port
     }
   };
 }
@@ -577,6 +585,160 @@ async function handleVMixCommand(cmd: CommandPayload): Promise<void> {
   }
 }
 
+// Handle CasparCG commands from Smart Panel
+async function handleCasparCGCommand(cmd: CommandPayload): Promise<void> {
+  const requestId = cmd.request_id;
+  const responseChannel = cmd.response_channel;
+
+  try {
+    switch (cmd.action) {
+      case 'caspar_connect': {
+        const host = (cmd.params.host as string) || 'localhost';
+        const port = (cmd.params.port as number) || 5250;
+
+        const result = await casparService.connect({ host, port });
+        await supabaseService.updateConnectionStatus(getConnections());
+        await supabaseService.sendResponse(requestId!, {
+          success: result.connected,
+          error: result.error || null
+        }, responseChannel);
+        break;
+      }
+
+      case 'caspar_play': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer, clip } = cmd.params as any;
+        const result = await casparService.play(channel, layer, clip);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_stop': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer } = cmd.params as any;
+        const result = await casparService.stop(channel, layer);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_load': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer, clip } = cmd.params as any;
+        const result = await casparService.load(channel, layer, clip);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_loadbg': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer, clip, auto } = cmd.params as any;
+        const result = await casparService.loadBg(channel, layer, clip, auto);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_clear': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer } = cmd.params as any;
+        const result = await casparService.clear(channel, layer);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_cg_add': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer, template, playOnLoad, data } = cmd.params as any;
+        const result = await casparService.cgAdd(channel, layer, template, playOnLoad, data);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_cg_update': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer, data } = cmd.params as any;
+        const result = await casparService.cgUpdate(channel, layer, data);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_cg_stop': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer } = cmd.params as any;
+        const result = await casparService.cgStop(channel, layer);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_cg_next': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer } = cmd.params as any;
+        const result = await casparService.cgNext(channel, layer);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_cg_clear': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer } = cmd.params as any;
+        const result = await casparService.cgClear(channel, layer);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      case 'caspar_cg_play': {
+        if (!casparService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'CasparCG not connected', responseChannel);
+          break;
+        }
+        const { channel, layer } = cmd.params as any;
+        const result = await casparService.cgPlay(channel, layer);
+        await supabaseService.sendResponse(requestId!, { success: result.code >= 200 && result.code < 300 }, responseChannel);
+        break;
+      }
+
+      default:
+        await supabaseService.sendError(requestId!, `Unknown command: ${cmd.action}`, responseChannel);
+        break;
+    }
+  } catch (error) {
+    const errorMsg = (error as Error).message;
+    logger.error(`[CasparCG] Command failed: ${cmd.action} - ${errorMsg}`);
+    if (requestId) {
+      await supabaseService.sendError(requestId, errorMsg, responseChannel);
+    }
+  }
+}
+
 // Handle all commands from Smart Panel
 function handleCommand(cmd: CommandPayload): void {
   logger.info(`[Command] Received: ${cmd.action}`);
@@ -592,6 +754,12 @@ function handleCommand(cmd: CommandPayload): void {
     handleVMixCommand(cmd);
     return;
   }
+
+  // CasparCG commands
+  if (cmd.action.startsWith('caspar_')) {
+    handleCasparCGCommand(cmd);
+    return;
+  }
 }
 
 function initializeApp(): void {
@@ -604,6 +772,7 @@ function initializeApp(): void {
   supabaseService = new SupabaseService(logger);
   obsService = new OBSService(logger);
   vmixService = new VMixService(logger);
+  casparService = new CasparCGService(logger);
 
   // Auto-connect to OBS if configured
   const config = configManager.get();
@@ -622,6 +791,15 @@ function initializeApp(): void {
     vmixService.connect({
       host: config.vmix.host,
       port: config.vmix.httpPort || 8088
+    });
+  }
+
+  // Auto-connect to CasparCG if configured
+  if (config.casparcg?.enabled && config.casparcg.host) {
+    logger.info('[CasparCG] Auto-connecting with saved config...');
+    casparService.connect({
+      host: config.casparcg.host,
+      port: config.casparcg.port || 5250
     });
   }
 
@@ -663,6 +841,18 @@ function initializeApp(): void {
     logger.info(`[vMix] Status changed: connected=${status.connected}`);
     if (mainWindow) {
       mainWindow.webContents.send('vmix-status-changed', status);
+    }
+    // Update Smart Panel with new connection status
+    if (supabaseService.isConnected()) {
+      supabaseService.updateConnectionStatus(getConnections());
+    }
+  });
+
+  // Set up CasparCG status change callback
+  casparService.onStatusChange((status) => {
+    logger.info(`[CasparCG] Status changed: connected=${status.connected}`);
+    if (mainWindow) {
+      mainWindow.webContents.send('casparcg-status-changed', status);
     }
     // Update Smart Panel with new connection status
     if (supabaseService.isConnected()) {
@@ -867,6 +1057,30 @@ function setupIpcHandlers(): void {
     return { connected: status.connected, version: status.version };
   });
 
+  // CasparCG Connection
+  ipcMain.handle('test-casparcg-connection', async (_event, config: { host: string; port: number }): Promise<{ success: boolean; error?: string }> => {
+    logger.info(`[CasparCG] Testing connection to ${config.host}:${config.port}...`);
+    const result = await casparService.connect({
+      host: config.host,
+      port: config.port
+    });
+
+    if (result.connected) {
+      return { success: true };
+    }
+    return { success: false, error: result.error };
+  });
+
+  ipcMain.handle('disconnect-casparcg', async (): Promise<void> => {
+    logger.info('[CasparCG] Disconnecting...');
+    await casparService.disconnect();
+  });
+
+  ipcMain.handle('get-casparcg-status', (): { connected: boolean } => {
+    const status = casparService.getStatus();
+    return { connected: status.connected };
+  });
+
   // Update checker
   ipcMain.handle('check-for-updates', async (): Promise<void> => {
     await updateChecker.checkForUpdates();
@@ -925,6 +1139,7 @@ app.on('before-quit', async () => {
   logger.info('Shutting down...');
   await obsService.disconnect();
   await vmixService.disconnect();
+  await casparService.disconnect();
   await supabaseService.disconnect();
   logger.info('Goodbye!');
 });

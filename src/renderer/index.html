@@ -82,6 +82,19 @@
             </div>
             <p class="status-detail" id="detail-vmix">Enable in configuration</p>
           </div>
+
+          <!-- CasparCG Connection -->
+          <div class="status-card">
+            <div class="status-header">
+              <span class="status-icon">📺</span>
+              <h3>CasparCG</h3>
+            </div>
+            <div class="status-indicator disconnected" id="status-casparcg">
+              <span class="dot"></span>
+              <span class="text">Disabled</span>
+            </div>
+            <p class="status-detail" id="detail-casparcg">Enable in configuration</p>
+          </div>
         </div>
 
         <!-- First Run Message -->
@@ -169,6 +182,30 @@
                 </div>
               </div>
               <button type="button" class="btn btn-secondary" id="btn-test-vmix">Test Connection</button>
+            </div>
+          </div>
+
+          <!-- CasparCG Section -->
+          <div class="config-section">
+            <h3>📺 CasparCG</h3>
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" id="casparcgEnabled">
+                Enable CasparCG integration
+              </label>
+            </div>
+            <div class="casparcg-settings" id="casparcg-settings">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="casparcgHost">Host</label>
+                  <input type="text" id="casparcgHost" value="localhost">
+                </div>
+                <div class="form-group">
+                  <label for="casparcgPort">Port</label>
+                  <input type="number" id="casparcgPort" value="5250">
+                </div>
+              </div>
+              <button type="button" class="btn btn-secondary" id="btn-test-casparcg">Test Connection</button>
             </div>
           </div>
 
@@ -280,6 +317,12 @@
         updateVMixStatus(status);
       });
 
+      // Listen for real-time CasparCG status changes
+      window.electronAPI.onCasparCGStatusChanged((status) => {
+        console.log('CasparCG status changed:', status);
+        updateCasparCGStatus(status);
+      });
+
       // Listen for update notifications (from GitHub check or admin push)
       window.electronAPI.onUpdateStatus((status) => {
         const banner = document.getElementById('update-banner');
@@ -369,6 +412,12 @@
       document.getElementById('vmixTcpPort').value = config.vmix?.tcpPort || 8099;
       toggleVmixSettings();
 
+      // CasparCG
+      document.getElementById('casparcgEnabled').checked = config.casparcg?.enabled || false;
+      document.getElementById('casparcgHost').value = config.casparcg?.host || 'localhost';
+      document.getElementById('casparcgPort').value = config.casparcg?.port || 5250;
+      toggleCasparcgSettings();
+
       // Service Mode
       document.getElementById('runAsService').checked = config.runAsService || false;
     }
@@ -381,6 +430,11 @@
     function toggleVmixSettings() {
       const enabled = document.getElementById('vmixEnabled').checked;
       document.getElementById('vmix-settings').style.display = enabled ? 'block' : 'none';
+    }
+
+    function toggleCasparcgSettings() {
+      const enabled = document.getElementById('casparcgEnabled').checked;
+      document.getElementById('casparcg-settings').style.display = enabled ? 'block' : 'none';
     }
 
     function getSuspendReasonText(reason) {
@@ -439,6 +493,22 @@
         vmixStatusEl.className = 'status-indicator disconnected';
         vmixStatusEl.querySelector('.text').textContent = 'Disconnected';
         vmixDetail.textContent = 'Connection lost';
+      }
+    }
+
+    // Real-time CasparCG status update (called from event listener)
+    function updateCasparCGStatus(status) {
+      const casparStatusEl = document.getElementById('status-casparcg');
+      const casparDetail = document.getElementById('detail-casparcg');
+
+      if (status.connected) {
+        casparStatusEl.className = 'status-indicator connected';
+        casparStatusEl.querySelector('.text').textContent = 'Connected';
+        casparDetail.textContent = `CasparCG - ${status.host || 'localhost'}:${status.port || 5250}`;
+      } else {
+        casparStatusEl.className = 'status-indicator disconnected';
+        casparStatusEl.querySelector('.text').textContent = 'Disconnected';
+        casparDetail.textContent = 'Connection lost';
       }
     }
 
@@ -503,6 +573,26 @@
         vmixStatus.querySelector('.text').textContent = 'Disabled';
         vmixDetail.textContent = 'Enable in Configuration';
       }
+
+      // CasparCG status - check actual connection
+      const casparStatus = document.getElementById('status-casparcg');
+      const casparDetail = document.getElementById('detail-casparcg');
+      if (config.casparcg?.enabled) {
+        const casparConn = await window.electronAPI.getCasparCGStatus();
+        if (casparConn.connected) {
+          casparStatus.className = 'status-indicator connected';
+          casparStatus.querySelector('.text').textContent = 'Connected';
+          casparDetail.textContent = `CasparCG - ${config.casparcg.host}:${config.casparcg.port}`;
+        } else {
+          casparStatus.className = 'status-indicator connecting';
+          casparStatus.querySelector('.text').textContent = 'Connecting...';
+          casparDetail.textContent = config.casparcg.host + ':' + config.casparcg.port;
+        }
+      } else {
+        casparStatus.className = 'status-indicator disconnected';
+        casparStatus.querySelector('.text').textContent = 'Disabled';
+        casparDetail.textContent = 'Enable in Configuration';
+      }
     }
 
     async function refreshLogs() {
@@ -516,6 +606,7 @@
     // Event listeners
     document.getElementById('obsEnabled').addEventListener('change', toggleObsSettings);
     document.getElementById('vmixEnabled').addEventListener('change', toggleVmixSettings);
+    document.getElementById('casparcgEnabled').addEventListener('change', toggleCasparcgSettings);
     document.getElementById('btn-refresh-logs').addEventListener('click', refreshLogs);
 
     // External links
@@ -612,6 +703,21 @@
       setTimeout(() => { btn.textContent = 'Test Connection'; }, 3000);
     });
 
+    document.getElementById('btn-test-casparcg').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-test-casparcg');
+      btn.textContent = 'Testing...';
+      btn.disabled = true;
+
+      const result = await window.electronAPI.testCasparCGConnection({
+        host: document.getElementById('casparcgHost').value,
+        port: parseInt(document.getElementById('casparcgPort').value)
+      });
+
+      btn.textContent = result.success ? '✓ Connected!' : '✗ ' + result.error;
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Test Connection'; }, 3000);
+    });
+
     // Save config
     document.getElementById('config-form').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -636,6 +742,11 @@
           host: document.getElementById('vmixHost').value,
           httpPort: parseInt(document.getElementById('vmixHttpPort').value),
           tcpPort: parseInt(document.getElementById('vmixTcpPort').value)
+        },
+        casparcg: {
+          enabled: document.getElementById('casparcgEnabled').checked,
+          host: document.getElementById('casparcgHost').value,
+          port: parseInt(document.getElementById('casparcgPort').value)
         },
         runAsService: document.getElementById('runAsService').checked
       };

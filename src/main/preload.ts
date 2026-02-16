@@ -41,12 +41,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getVMixStatus: (): Promise<{ connected: boolean; version?: string }> =>
     ipcRenderer.invoke('get-vmix-status'),
 
+  // CasparCG
+  testCasparCGConnection: (config: { host: string; port: number }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('test-casparcg-connection', config),
+  getCasparCGStatus: (): Promise<{ connected: boolean }> =>
+    ipcRenderer.invoke('get-casparcg-status'),
+
   // Real-time status change events
   onOBSStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => {
     ipcRenderer.on('obs-status-changed', (_event, status) => callback(status));
   },
   onVMixStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => {
     ipcRenderer.on('vmix-status-changed', (_event, status) => callback(status));
+  },
+  onCasparCGStatusChanged: (callback: (status: { connected: boolean; host?: string; port?: number }) => void) => {
+    ipcRenderer.on('casparcg-status-changed', (_event, status) => callback(status));
   },
 
   // Update checker
@@ -78,8 +87,11 @@ declare global {
       testVMixConnection: (config: { host: string; port: number }) => Promise<{ success: boolean; error?: string; version?: string }>;
       getOBSStatus: () => Promise<{ connected: boolean; version?: string }>;
       getVMixStatus: () => Promise<{ connected: boolean; version?: string }>;
+      testCasparCGConnection: (config: { host: string; port: number }) => Promise<{ success: boolean; error?: string }>;
+      getCasparCGStatus: () => Promise<{ connected: boolean }>;
       onOBSStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => void;
       onVMixStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => void;
+      onCasparCGStatusChanged: (callback: (status: { connected: boolean; host?: string; port?: number }) => void) => void;
       checkForUpdates: () => Promise<void>;
       openReleasePage: () => Promise<void>;
       downloadAndInstall: () => Promise<void>;

@@ -107,6 +107,11 @@ export class ConfigManager {
         httpPort: 8088,
         tcpPort: 8099
       },
+      casparcg: {
+        enabled: false,
+        host: 'localhost',
+        port: 5250
+      },
       dataSources: [],
       settings: {
         autoStart: false,

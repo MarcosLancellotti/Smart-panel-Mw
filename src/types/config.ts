@@ -17,6 +17,12 @@ export interface SmartPanelConfig {
     httpPort: number;
     tcpPort: number;
   }
+
+  export interface CasparCGConfig {
+    enabled: boolean;
+    host: string;
+    port: number;
+  }
   
   export interface DataSourceConfig {
     type: 'excel' | 'csv' | 'json';
@@ -36,6 +42,7 @@ export interface SmartPanelConfig {
     smartPanel: SmartPanelConfig;
     obs?: OBSConfig;
     vmix?: VMixConfig;
+    casparcg?: CasparCGConfig;
     dataSources?: DataSourceConfig[];
     settings: SettingsConfig;
     runAsService?: boolean;
