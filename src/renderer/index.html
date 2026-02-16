@@ -224,6 +224,7 @@
           <!-- Save Button -->
           <div class="form-actions">
             <button type="submit" class="btn btn-primary" id="btn-save">Save Configuration</button>
+            <button type="button" class="btn btn-secondary" id="btn-check-updates">Check for Updates</button>
             <span class="save-status" id="save-status"></span>
           </div>
         </form>
@@ -716,6 +717,16 @@
       btn.textContent = result.success ? '✓ Connected!' : '✗ ' + result.error;
       btn.disabled = false;
       setTimeout(() => { btn.textContent = 'Test Connection'; }, 3000);
+    });
+
+    // Check for updates
+    document.getElementById('btn-check-updates').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-check-updates');
+      btn.textContent = 'Checking...';
+      btn.disabled = true;
+      await window.electronAPI.checkForUpdates();
+      btn.textContent = 'Check for Updates';
+      btn.disabled = false;
     });
 
     // Save config
