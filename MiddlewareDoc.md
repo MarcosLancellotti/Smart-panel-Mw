@@ -1,7 +1,7 @@
 # Smart Panel Middleware - Technical Documentation
 
-**Version:** 1.4.2
-**Last Updated:** 2026-02-02
+**Version:** 1.6.2
+**Last Updated:** 2026-02-16
 **Platform:** macOS (Apple Silicon), Windows (x64)
 
 ---
@@ -17,6 +17,7 @@
 | Cloud | Supabase (Realtime + RPC) | 2.89.x |
 | OBS Integration | obs-websocket-js | 5.0.5 |
 | vMix Integration | HTTP API (axios) | - |
+| CasparCG Integration | TCP (AMCP protocol) | - |
 | Logging | winston + daily-rotate-file | 3.11.x |
 | Build | electron-builder | 24.x |
 
@@ -34,7 +35,8 @@ smart-panel-middleware/
 │   ├── services/
 │   │   ├── SupabaseService.ts  # Cloud connection, auth, realtime
 │   │   ├── OBSService.ts       # OBS WebSocket client
-│   │   └── VMixService.ts      # vMix HTTP client
+│   │   ├── VMixService.ts      # vMix HTTP client
+│   │   └── CasparCGService.ts  # CasparCG TCP client (AMCP)
 │   ├── core/
 │   │   ├── ConfigManager.ts    # Local config persistence
 │   │   └── LogManager.ts       # Logging with rotation
@@ -74,7 +76,7 @@ const { data, error } = await supabase.rpc('authenticate_middleware', {
   p_api_key: apiKey,
   p_machine_name: os.hostname(),
   p_metadata: {
-    appVersion: '1.4.2',
+    appVersion: '1.6.2',
     os: process.platform,
     nodeVersion: process.version
   }
@@ -203,6 +205,23 @@ channel.subscribe();
 | `vmix_start_recording` | - | Start recording |
 | `vmix_stop_recording` | - | Stop recording |
 
+### CasparCG Commands
+
+| Action | Parameters | Description |
+|--------|------------|-------------|
+| `caspar_connect` | `host`, `port` | Connect to CasparCG |
+| `caspar_play` | `channel`, `layer`, `clip?` | Play media on channel/layer |
+| `caspar_stop` | `channel`, `layer` | Stop playback |
+| `caspar_load` | `channel`, `layer`, `clip` | Load media (paused) |
+| `caspar_loadbg` | `channel`, `layer`, `clip`, `auto?` | Load in background |
+| `caspar_clear` | `channel`, `layer?` | Clear channel or layer |
+| `caspar_cg_add` | `channel`, `layer`, `template`, `playOnLoad`, `data?` | Add CG template |
+| `caspar_cg_update` | `channel`, `layer`, `data` | Update template data |
+| `caspar_cg_stop` | `channel`, `layer` | Stop template |
+| `caspar_cg_next` | `channel`, `layer` | Trigger next in template |
+| `caspar_cg_clear` | `channel`, `layer` | Clear all templates |
+| `caspar_cg_play` | `channel`, `layer` | Play stopped template |
+
 ---
 
 ## 5. MESSAGE FORMAT
@@ -311,6 +330,33 @@ const response = await axios.get(`http://${host}:${port}/api`);
 }
 ```
 
+### CasparCG Connection
+
+| Property | Value |
+|----------|-------|
+| Protocol | TCP (AMCP) |
+| Library | Node.js `net.Socket` |
+| Default Host | localhost |
+| Default Port | 5250 |
+| Command Format | `COMMAND\r\n` |
+| Response Format | `{code} {message}\r\n` |
+
+```typescript
+// Connection
+const socket = new net.Socket();
+socket.connect(5250, 'localhost');
+
+// Send AMCP command
+socket.write('PLAY 1-10 "clip"\r\n');
+
+// Status reporting
+{
+  connected: true,
+  host: "localhost",
+  port: 5250
+}
+```
+
 ### Status Reporting
 
 Connection status is reported:
@@ -322,7 +368,8 @@ Connection status is reported:
 // Status update to Smart Panel
 await supabaseService.updateConnectionStatus({
   obs: { connected: true, version: "30.0", host: "localhost", port: 4455 },
-  vmix: { connected: false }
+  vmix: { connected: false },
+  casparcg: { connected: true, host: "localhost", port: 5250 }
 });
 ```
 
@@ -345,10 +392,11 @@ await supabase.rpc('update_middleware_status', {
   p_status: 'online',
   p_connections: {
     obs: { connected: true, version: '30.0', host: 'localhost', port: 4455 },
-    vmix: { connected: false }
+    vmix: { connected: false },
+    casparcg: { connected: true, host: 'localhost', port: 5250 }
   },
   p_metadata: {
-    appVersion: '1.4.2',
+    appVersion: '1.6.2',
     os: 'darwin',
     lastHeartbeat: '2026-02-02T10:00:00.000Z'
   }
@@ -427,6 +475,11 @@ Logs are stored in:
     "host": "localhost",
     "httpPort": 8088,
     "tcpPort": 8099
+  },
+  "casparcg": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 5250
   },
   "runAsService": false
 }
@@ -522,6 +575,11 @@ function handleCommand(cmd: CommandPayload): void {
     handleVMixCommand(cmd);
     return;
   }
+
+  if (cmd.action.startsWith('caspar_')) {
+    handleCasparCGCommand(cmd);
+    return;
+  }
 }
 ```
 
@@ -573,6 +631,25 @@ async connect(config: { host: string; port: number }) {
     return { connected: true, version };
   } catch (error) {
     return { connected: false, error: error.message };
+  }
+}
+```
+
+### CasparCG Connection
+
+```typescript
+// src/services/CasparCGService.ts
+async connect(config: { host: string; port: number }) {
+  const socket = new net.Socket();
+  socket.connect(config.port, config.host, () => {
+    this._connected = true;
+  });
+
+  // AMCP commands: write command + \r\n, parse response code
+  async sendCommand(command: string) {
+    socket.write(command + '\r\n');
+    // Response: "{code} {message}\r\n"
+    // 2xx = success, 4xx/5xx = error
   }
 }
 ```
@@ -695,6 +772,8 @@ $$;
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.6.2 | 2026-02-16 | CasparCG integration (AMCP/TCP), manual Check for Updates button |
+| 1.5.0 | 2026-02-15 | Version bump, build improvements |
 | 1.4.2 | 2026-02-02 | DMG installer, English UI, fixed auth bcrypt vs SHA256, fixed middleware_id channel |
 | 1.4.1 | 2026-01-07 | Real-time OBS/vMix status updates |
 | 1.4.0 | 2026-01-05 | Suspend/Resume system, GUI installers |
