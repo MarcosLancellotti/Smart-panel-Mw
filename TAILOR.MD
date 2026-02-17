@@ -394,6 +394,73 @@ channel.send({
 
 ---
 
+## RELEASE CHECKLIST
+
+Every time a new version is released, follow these steps **in order**. Skipping the upload step will cause the in-app updater to fail.
+
+### 1. Bump version
+
+Update `version` in `package.json` (this is the single source of truth).
+
+### 2. Build both platforms
+
+```bash
+npm run build:mac    # → dist/Smart-Panel-Middleware-mac.dmg
+npm run build:exe    # → dist/Smart-Panel-Middleware-win.zip
+```
+
+After building, verify the artifacts exist and show the new version:
+```bash
+ls -la dist/*.dmg dist/*.zip
+```
+
+### 3. Create GitHub release AND upload assets
+
+**Option A — Create release + upload in one command:**
+```bash
+gh release create v<VERSION> \
+  "./dist/Smart-Panel-Middleware-mac.dmg" \
+  "./dist/Smart-Panel-Middleware-win.zip" \
+  --repo MarcosLancellotti/Smart-panel-Mw \
+  --title "v<VERSION> - Description" \
+  --notes "Release notes..."
+```
+
+**Option B — If release already exists (assets missing):**
+```bash
+gh release upload v<VERSION> \
+  "./dist/Smart-Panel-Middleware-mac.dmg" \
+  "./dist/Smart-Panel-Middleware-win.zip" \
+  --repo MarcosLancellotti/Smart-panel-Mw \
+  --clobber
+```
+
+### 4. Verify assets uploaded
+
+```bash
+gh release view v<VERSION> --repo MarcosLancellotti/Smart-panel-Mw --json assets
+```
+
+Must show **exactly** these two asset names (the UpdateChecker matches on them):
+- `Smart-Panel-Middleware-mac.dmg`
+- `Smart-Panel-Middleware-win.zip`
+
+If assets are empty (`"assets":[]`), the in-app updater **will fail**.
+
+### 5. Test the update flow
+
+Open an older version of the middleware → it should detect the new version → click Update → download should complete successfully.
+
+### Common mistakes
+
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| `gh release create` without attaching files | `"assets":[]`, updater fails | `gh release upload v<X> <files> --clobber` |
+| Building before bumping `package.json` version | DMG/ZIP contain old version | Bump version first, then rebuild |
+| Wrong asset filenames | UpdateChecker can't find download | Must be `Smart-Panel-Middleware-mac.dmg` and `Smart-Panel-Middleware-win.zip` |
+
+---
+
 ## DOWNLOAD URLS
 
 **Latest Release:**
