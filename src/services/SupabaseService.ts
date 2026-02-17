@@ -86,10 +86,10 @@ export class SupabaseService {
 
     // Check WebSocket availability
     const wsAvailable = typeof WebSocket !== 'undefined';
-    this.logger.info(`[Supabase] WebSocket available: ${wsAvailable}`);
+    this.logger.info(`[Cloud] WebSocket available: ${wsAvailable}`);
 
     // Log connection attempt
-    this.logger.info(`[Supabase] Connecting to: ${SUPABASE_URL}`);
+    this.logger.info(`[Cloud] Connecting to: ${SUPABASE_URL}`);
 
     this.supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       realtime: {
@@ -103,16 +103,16 @@ export class SupabaseService {
     // Test if we can reach Supabase
     this.testConnection();
 
-    this.logger.info('[Supabase] Client initialized with Realtime config');
+    this.logger.info('[Cloud] Client initialized with Realtime config');
   }
 
   private testRealtimeChannel(): void {
-    this.logger.info('[Supabase] Testing Realtime with simple channel...');
+    this.logger.info('[Cloud] Testing Realtime with simple channel...');
     const testChannel = this.supabase.channel('test-channel-' + Date.now());
     testChannel.subscribe((status, err) => {
-      this.logger.info(`[Supabase] TEST CHANNEL STATUS: ${status}`);
+      this.logger.info(`[Cloud] TEST CHANNEL STATUS: ${status}`);
       if (err) {
-        this.logger.error(`[Supabase] TEST CHANNEL ERROR: ${JSON.stringify(err)}`);
+        this.logger.error(`[Cloud] TEST CHANNEL ERROR: ${JSON.stringify(err)}`);
       }
       if (status === 'SUBSCRIBED') {
         this.logger.info('✅ Realtime works!');
@@ -128,12 +128,12 @@ export class SupabaseService {
     try {
       const { data, error } = await this.supabase.from('middlewares').select('count').limit(1);
       if (error) {
-        this.logger.error(`[Supabase] Connection test failed: ${error.message}`);
+        this.logger.error(`[Cloud] Connection test failed: ${error.message}`);
       } else {
-        this.logger.info('[Supabase] Connection test OK - can reach database');
+        this.logger.info('[Cloud] Connection test OK - can reach database');
       }
     } catch (err) {
-      this.logger.error(`[Supabase] Connection test exception: ${(err as Error).message}`);
+      this.logger.error(`[Cloud] Connection test exception: ${(err as Error).message}`);
     }
   }
 
@@ -143,7 +143,7 @@ export class SupabaseService {
    */
   async authenticate(apiKey: string): Promise<AuthResult> {
     try {
-      this.logger.info('[Supabase] Authenticating with API key...');
+      this.logger.info('[Cloud] Authenticating with API key...');
 
       const { data, error } = await this.supabase.rpc('authenticate_middleware', {
         p_api_key: apiKey,
@@ -155,15 +155,15 @@ export class SupabaseService {
         }
       });
 
-      this.logger.info(`[Supabase] RPC response: ${JSON.stringify({ data, error })}`);
+      this.logger.info(`[Cloud] RPC response: ${JSON.stringify({ data, error })}`);
 
       if (error) {
-        this.logger.error(`[Supabase] Auth error: ${error.message}`, error as Error);
+        this.logger.error(`[Cloud] Auth error: ${error.message}`, error as Error);
         return { success: false, error: error.message };
       }
 
       if (!data) {
-        this.logger.error('[Supabase] Auth failed: No data returned from RPC');
+        this.logger.error('[Cloud] Auth failed: No data returned from RPC');
         return { success: false, error: 'No response from server' };
       }
 
@@ -175,7 +175,7 @@ export class SupabaseService {
         // Check if middleware is active (not suspended)
         const isActive = data.active !== false; // Default to true if not specified
 
-        this.logger.info('[Supabase] Authenticated successfully', {
+        this.logger.info('[Cloud] Authenticated successfully', {
           middlewareId: this.middlewareId,
           companyId: this.companyId,
           name: this.apiKeyName,
@@ -184,7 +184,7 @@ export class SupabaseService {
 
         // If suspended, handle it
         if (!isActive) {
-          this.logger.warn(`[Supabase] Middleware is suspended: ${data.suspend_reason || 'No reason provided'}`);
+          this.logger.warn(`[Cloud] Middleware is suspended: ${data.suspend_reason || 'No reason provided'}`);
           this.handleSuspend(data.suspend_reason || 'disabled_by_platform', data.suspend_message);
           return {
             success: true,
@@ -210,11 +210,11 @@ export class SupabaseService {
         };
       }
 
-      this.logger.error(`[Supabase] Auth failed: ${data.error || 'Unknown error'}`);
+      this.logger.error(`[Cloud] Auth failed: ${data.error || 'Unknown error'}`);
       return { success: false, error: data.error || 'Authentication failed' };
     } catch (err) {
       const errorMsg = (err as Error).message || 'Unknown error';
-      this.logger.error(`[Supabase] Auth exception: ${errorMsg}`, err as Error);
+      this.logger.error(`[Cloud] Auth exception: ${errorMsg}`, err as Error);
       return { success: false, error: `Connection error: ${errorMsg}` };
     }
   }
@@ -228,7 +228,7 @@ export class SupabaseService {
     }
 
     try {
-      this.logger.info('[Supabase] Registering middleware via RPC...');
+      this.logger.info('[Cloud] Registering middleware via RPC...');
 
       const { data, error } = await this.supabase.rpc('register_middleware', {
         p_company_id: this.companyId,
@@ -247,19 +247,19 @@ export class SupabaseService {
       });
 
       if (error) {
-        this.logger.error(`[Supabase] Register error: ${error.message}`, error as Error);
+        this.logger.error(`[Cloud] Register error: ${error.message}`, error as Error);
         return { success: false, error: error.message };
       }
 
       if (data && data.success) {
         this.middlewareId = data.middleware_id;
-        this.logger.info(`[Supabase] Middleware registered with ID: ${this.middlewareId}`);
+        this.logger.info(`[Cloud] Middleware registered with ID: ${this.middlewareId}`);
         return { success: true, middleware_id: this.middlewareId || undefined };
       }
 
       return { success: false, error: data?.error || 'Registration failed' };
     } catch (err) {
-      this.logger.error('[Supabase] Register exception', err as Error);
+      this.logger.error('[Cloud] Register exception', err as Error);
       return { success: false, error: 'Registration failed' };
     }
   }
@@ -269,7 +269,7 @@ export class SupabaseService {
    */
   subscribeToCommands(onCommand?: (command: CommandPayload) => void): void {
     if (!this.middlewareId) {
-      this.logger.warn('[Supabase] Cannot subscribe - not registered');
+      this.logger.warn('[Cloud] Cannot subscribe - not registered');
       return;
     }
 
@@ -277,7 +277,7 @@ export class SupabaseService {
 
     // Check if already subscribed to this channel
     if (this.channel) {
-      this.logger.info('[Supabase] Already subscribed, skipping duplicate subscription');
+      this.logger.info('[Cloud] Already subscribed, skipping duplicate subscription');
       // Just update the callback if provided
       if (onCommand) {
         this.onCommandCallback = onCommand;
@@ -287,7 +287,7 @@ export class SupabaseService {
 
     this.onCommandCallback = onCommand || null;
 
-    this.logger.info(`[Supabase] Subscribing to realtime channel: ${channelName}`);
+    this.logger.info(`[Cloud] Subscribing to realtime channel: ${channelName}`);
 
     // Create channel with explicit config
     this.channel = this.supabase.channel(channelName, {
@@ -356,7 +356,7 @@ export class SupabaseService {
 
       // If suspended, ignore other commands
       if (this.suspended) {
-        this.logger.warn(`[Supabase] Ignoring command while suspended: ${cmd.action}`);
+        this.logger.warn(`[Cloud] Ignoring command while suspended: ${cmd.action}`);
         if (cmd.response_channel) {
           await this.sendError(cmd.request_id!, 'Middleware is suspended', cmd.response_channel);
         }
@@ -385,9 +385,9 @@ export class SupabaseService {
 
     // Subscribe to the channel
     this.channel.subscribe((status, err) => {
-      this.logger.info(`[Supabase] Channel status: ${status}`);
+      this.logger.info(`[Cloud] Channel status: ${status}`);
       if (err) {
-        this.logger.error(`[Supabase] Channel error: ${JSON.stringify(err)}`);
+        this.logger.error(`[Cloud] Channel error: ${JSON.stringify(err)}`);
       }
       if (status === 'SUBSCRIBED') {
         this.logger.info('✅ Channel SUBSCRIBED - ready to receive commands');
@@ -530,7 +530,7 @@ export class SupabaseService {
       clearInterval(this.heartbeatInterval);
     }
 
-    this.logger.info('[Supabase] Starting heartbeat (30s interval)');
+    this.logger.info('[Cloud] Starting heartbeat (30s interval)');
 
     // Initial heartbeat
     this.sendHeartbeat(getConnections());
@@ -561,18 +561,18 @@ export class SupabaseService {
       });
 
       if (error) {
-        this.logger.error(`[Supabase] Heartbeat error: ${error.message} (code: ${error.code})`);
+        this.logger.error(`[Cloud] Heartbeat error: ${error.message} (code: ${error.code})`);
       } else {
-        this.logger.debug('[Supabase] Heartbeat sent');
+        this.logger.debug('[Cloud] Heartbeat sent');
 
         // Check if middleware is still active (if response includes this info)
         if (data && data.active === false) {
-          this.logger.warn(`[Supabase] Heartbeat indicates middleware is suspended: ${data.suspend_reason}`);
+          this.logger.warn(`[Cloud] Heartbeat indicates middleware is suspended: ${data.suspend_reason}`);
           this.handleSuspend(data.suspend_reason || 'disabled_by_platform', data.suspend_message);
         }
       }
     } catch (err) {
-      this.logger.error('[Supabase] Heartbeat exception', err as Error);
+      this.logger.error('[Cloud] Heartbeat exception', err as Error);
     }
   }
 
@@ -583,7 +583,7 @@ export class SupabaseService {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
-      this.logger.info('[Supabase] Heartbeat stopped');
+      this.logger.info('[Cloud] Heartbeat stopped');
     }
   }
 
@@ -596,7 +596,7 @@ export class SupabaseService {
     this.suspended = true;
     this.suspendReason = reason;
 
-    this.logger.warn(`⛔ [Supabase] Middleware SUSPENDED: ${reason}`);
+    this.logger.warn(`⛔ [Cloud] Middleware SUSPENDED: ${reason}`);
 
     // Stop heartbeat (but keep channel to receive middleware_enable)
     this.stopHeartbeat();
@@ -623,7 +623,7 @@ export class SupabaseService {
   private handleResume(): void {
     if (!this.suspended) return; // Not suspended
 
-    this.logger.info('✅ [Supabase] Middleware RESUMED');
+    this.logger.info('✅ [Cloud] Middleware RESUMED');
 
     this.suspended = false;
     this.suspendReason = null;
@@ -641,10 +641,10 @@ export class SupabaseService {
     // If channel still exists, just restart heartbeat
     // If channel was lost, do full reconnect
     if (this.channel && this.savedGetConnections) {
-      this.logger.info('[Supabase] Restarting heartbeat after resume...');
+      this.logger.info('[Cloud] Restarting heartbeat after resume...');
       this.startHeartbeat(this.savedGetConnections);
     } else if (this.savedApiKey && this.savedGetConnections) {
-      this.logger.info('[Supabase] Channel lost, doing full reconnect...');
+      this.logger.info('[Cloud] Channel lost, doing full reconnect...');
       this.connect(this.savedApiKey, this.savedGetConnections, this.onCommandCallback || undefined);
     }
   }
@@ -657,21 +657,21 @@ export class SupabaseService {
       clearInterval(this.retryInterval);
     }
 
-    this.logger.info('[Supabase] Starting retry check (60s interval)');
+    this.logger.info('[Cloud] Starting retry check (60s interval)');
 
     this.retryInterval = setInterval(async () => {
       if (!this.savedApiKey) return;
 
-      this.logger.info('[Supabase] Checking if middleware is re-enabled...');
+      this.logger.info('[Cloud] Checking if middleware is re-enabled...');
 
       // Try to authenticate again
       const auth = await this.authenticate(this.savedApiKey);
 
       if (auth.success && auth.active !== false) {
-        this.logger.info('[Supabase] Middleware is now active!');
+        this.logger.info('[Cloud] Middleware is now active!');
         this.handleResume();
       } else {
-        this.logger.info('[Supabase] Middleware still suspended');
+        this.logger.info('[Cloud] Middleware still suspended');
       }
     }, 60000);
   }
@@ -683,7 +683,7 @@ export class SupabaseService {
     if (this.retryInterval) {
       clearInterval(this.retryInterval);
       this.retryInterval = null;
-      this.logger.info('[Supabase] Retry check stopped');
+      this.logger.info('[Cloud] Retry check stopped');
     }
   }
 
@@ -705,7 +705,7 @@ export class SupabaseService {
     if (this.channel) {
       this.supabase.removeChannel(this.channel);
       this.channel = null;
-      this.logger.info('[Supabase] Unsubscribed from realtime');
+      this.logger.info('[Cloud] Unsubscribed from realtime');
     }
   }
 
@@ -713,7 +713,7 @@ export class SupabaseService {
    * Disconnect cleanly (set status offline)
    */
   async disconnect(): Promise<void> {
-    this.logger.info('[Supabase] Disconnecting...');
+    this.logger.info('[Cloud] Disconnecting...');
 
     this.stopHeartbeat();
     this.stopRetry();
@@ -734,9 +734,9 @@ export class SupabaseService {
           }
         });
 
-        this.logger.info('[Supabase] Status set to offline');
+        this.logger.info('[Cloud] Status set to offline');
       } catch (err) {
-        this.logger.error('[Supabase] Disconnect error', err as Error);
+        this.logger.error('[Cloud] Disconnect error', err as Error);
       }
     }
 
@@ -744,7 +744,7 @@ export class SupabaseService {
     this.companyId = null;
     this.apiKeyId = null;
     this.apiKeyName = null;
-    this.logger.info('[Supabase] Disconnected');
+    this.logger.info('[Cloud] Disconnected');
   }
 
   /**
@@ -816,12 +816,12 @@ export class SupabaseService {
       });
 
       if (error) {
-        this.logger.error('[Supabase] Update connections error', error as Error);
+        this.logger.error('[Cloud] Update connections error', error as Error);
       } else {
-        this.logger.info('[Supabase] Connection status updated', connections);
+        this.logger.info('[Cloud] Connection status updated', connections);
       }
     } catch (err) {
-      this.logger.error('[Supabase] Update connections exception', err as Error);
+      this.logger.error('[Cloud] Update connections exception', err as Error);
     }
   }
 
