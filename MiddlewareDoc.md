@@ -781,7 +781,74 @@ $$;
 
 ---
 
-## 13. TROUBLESHOOTING
+## 13. RELEASE CHECKLIST
+
+Every time a new version is released, follow these steps **in order**. Skipping the upload step will cause the in-app updater to fail.
+
+### Step 1: Bump version
+
+Update `version` in `package.json` (single source of truth).
+
+### Step 2: Build both platforms
+
+```bash
+npm run build:mac    # → dist/Smart-Panel-Middleware-mac.dmg
+npm run build:exe    # → dist/Smart-Panel-Middleware-win.zip
+```
+
+Verify artifacts:
+```bash
+ls -la dist/*.dmg dist/*.zip
+```
+
+### Step 3: Create GitHub release AND upload assets
+
+**Option A — New release:**
+```bash
+gh release create v<VERSION> \
+  "./dist/Smart-Panel-Middleware-mac.dmg" \
+  "./dist/Smart-Panel-Middleware-win.zip" \
+  --repo MarcosLancellotti/Smart-panel-Mw \
+  --title "v<VERSION> - Description" \
+  --notes "Release notes..."
+```
+
+**Option B — Release already exists (assets missing):**
+```bash
+gh release upload v<VERSION> \
+  "./dist/Smart-Panel-Middleware-mac.dmg" \
+  "./dist/Smart-Panel-Middleware-win.zip" \
+  --repo MarcosLancellotti/Smart-panel-Mw \
+  --clobber
+```
+
+### Step 4: Verify assets uploaded
+
+```bash
+gh release view v<VERSION> --repo MarcosLancellotti/Smart-panel-Mw --json assets
+```
+
+Must show **exactly** these two asset names (the `UpdateChecker` matches on them):
+- `Smart-Panel-Middleware-mac.dmg`
+- `Smart-Panel-Middleware-win.zip`
+
+If assets are empty (`"assets":[]`), the in-app updater **will fail**.
+
+### Step 5: Test the update flow
+
+Open an older version of the middleware → should detect new version → click Update → download completes.
+
+### Common Mistakes
+
+| Mistake | Symptom | Fix |
+|---------|---------|-----|
+| `gh release create` without attaching files | `"assets":[]`, updater fails | `gh release upload v<X> <files> --clobber` |
+| Building before bumping `package.json` version | DMG/ZIP contain old version | Bump version first, then rebuild |
+| Wrong asset filenames | UpdateChecker can't find download | Must be `Smart-Panel-Middleware-mac.dmg` and `Smart-Panel-Middleware-win.zip` |
+
+---
+
+## 14. TROUBLESHOOTING
 
 ### "Invalid or inactive API Key"
 
