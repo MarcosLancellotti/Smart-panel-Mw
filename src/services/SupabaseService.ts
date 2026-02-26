@@ -71,6 +71,7 @@ export class SupabaseService {
   private apiKeyId: string | null = null;
   private apiKeyName: string | null = null;
   private channel: RealtimeChannel | null = null;
+  private channelName: string | null = null;
   private heartbeatInterval: NodeJS.Timeout | null = null;
   private retryInterval: NodeJS.Timeout | null = null;
   private onCommandCallback: ((command: CommandPayload) => void) | null = null;
@@ -275,14 +276,21 @@ export class SupabaseService {
 
     const channelName = `middleware:${this.middlewareId}`;
 
-    // Check if already subscribed to this channel
+    // Check if already subscribed to the CORRECT channel
     if (this.channel) {
-      this.logger.info('[Cloud] Already subscribed, skipping duplicate subscription');
-      // Just update the callback if provided
-      if (onCommand) {
-        this.onCommandCallback = onCommand;
+      // If middleware_id changed (e.g. after re-auth), unsubscribe old channel first
+      if (this.channelName !== channelName) {
+        this.logger.warn(`[Cloud] middleware_id changed — re-subscribing (old: ${this.channelName}, new: ${channelName})`);
+        this.supabase.removeChannel(this.channel);
+        this.channel = null;
+        this.channelName = null;
+      } else {
+        this.logger.info('[Cloud] Already subscribed to correct channel, skipping');
+        if (onCommand) {
+          this.onCommandCallback = onCommand;
+        }
+        return;
       }
-      return;
     }
 
     this.onCommandCallback = onCommand || null;
@@ -290,6 +298,7 @@ export class SupabaseService {
     this.logger.info(`[Cloud] Subscribing to realtime channel: ${channelName}`);
 
     // Create channel with explicit config
+    this.channelName = channelName;
     this.channel = this.supabase.channel(channelName, {
       config: {
         broadcast: { self: false }
@@ -705,6 +714,7 @@ export class SupabaseService {
     if (this.channel) {
       this.supabase.removeChannel(this.channel);
       this.channel = null;
+      this.channelName = null;
       this.logger.info('[Cloud] Unsubscribed from realtime');
     }
   }
