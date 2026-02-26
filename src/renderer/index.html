@@ -401,13 +401,24 @@
             banner.style.display = '';
             break;
           }
-          case 'downloading':
-            text.textContent = 'Downloading update... ' + (status.progress || 0) + '%';
+          case 'downloading': {
+            let dlText = 'Downloading update... ' + (status.progress || 0) + '%';
+            if (status.downloadedMB && status.totalMB) {
+              dlText += '  (' + status.downloadedMB + ' / ' + status.totalMB + ' MB)';
+            }
+            if (status.speedMBs) {
+              dlText += '  —  ' + status.speedMBs + ' MB/s';
+            }
+            if (status.eta) {
+              dlText += '  —  ' + status.eta + ' left';
+            }
+            text.textContent = dlText;
             downloadBtn.disabled = true;
             downloadBtn.textContent = 'Downloading...';
             progress.style.display = '';
             progressBar.style.width = (status.progress || 0) + '%';
             break;
+          }
           case 'downloaded':
             text.textContent = 'Update downloaded! Installing...';
             actions.style.display = 'none';

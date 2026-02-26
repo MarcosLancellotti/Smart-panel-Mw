@@ -21,6 +21,10 @@ export interface UpdateStatus {
   required?: boolean;
   error?: string;
   progress?: number;
+  downloadedMB?: string;
+  totalMB?: string;
+  speedMBs?: string;
+  eta?: string;
 }
 
 interface GitHubRelease {
@@ -147,12 +151,33 @@ export class UpdateChecker {
 
           const totalBytes = parseInt(res.headers['content-length'] || '0', 10);
           let downloadedBytes = 0;
+          const startTime = Date.now();
+          let lastUpdate = 0;
 
           res.on('data', (chunk: Buffer) => {
             downloadedBytes += chunk.length;
             if (totalBytes > 0) {
+              const now = Date.now();
+              // Throttle UI updates to every 300ms
+              if (now - lastUpdate < 300) return;
+              lastUpdate = now;
+
               const progress = Math.round((downloadedBytes / totalBytes) * 100);
-              this.sendToRenderer({ status: 'downloading', progress });
+              const elapsedSec = (now - startTime) / 1000;
+              const speedBps = downloadedBytes / elapsedSec;
+              const remainingBytes = totalBytes - downloadedBytes;
+              const etaSec = speedBps > 0 ? remainingBytes / speedBps : 0;
+
+              this.sendToRenderer({
+                status: 'downloading',
+                progress,
+                downloadedMB: (downloadedBytes / 1048576).toFixed(1),
+                totalMB: (totalBytes / 1048576).toFixed(1),
+                speedMBs: (speedBps / 1048576).toFixed(1),
+                eta: etaSec < 60
+                  ? `${Math.ceil(etaSec)}s`
+                  : `${Math.floor(etaSec / 60)}m ${Math.ceil(etaSec % 60)}s`
+              });
             }
           });
 
