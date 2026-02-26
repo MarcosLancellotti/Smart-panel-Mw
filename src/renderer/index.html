@@ -95,6 +95,19 @@
             </div>
             <p class="status-detail" id="detail-casparcg">Enable in configuration</p>
           </div>
+
+          <!-- MeldStudio Connection -->
+          <div class="status-card">
+            <div class="status-header">
+              <span class="status-icon">🎙️</span>
+              <h3>Meld Studio</h3>
+            </div>
+            <div class="status-indicator disconnected" id="status-meldstudio">
+              <span class="dot"></span>
+              <span class="text">Disabled</span>
+            </div>
+            <p class="status-detail" id="detail-meldstudio">Enable in configuration</p>
+          </div>
         </div>
 
         <!-- First Run Message -->
@@ -206,6 +219,30 @@
                 </div>
               </div>
               <button type="button" class="btn btn-secondary" id="btn-test-casparcg">Test Connection</button>
+            </div>
+          </div>
+
+          <!-- MeldStudio Section -->
+          <div class="config-section">
+            <h3>🎙️ Meld Studio</h3>
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" id="meldstudioEnabled">
+                Enable Meld Studio integration
+              </label>
+            </div>
+            <div class="meldstudio-settings" id="meldstudio-settings">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="meldstudioHost">Host</label>
+                  <input type="text" id="meldstudioHost" value="127.0.0.1">
+                </div>
+                <div class="form-group">
+                  <label for="meldstudioPort">Port</label>
+                  <input type="number" id="meldstudioPort" value="13376">
+                </div>
+              </div>
+              <button type="button" class="btn btn-secondary" id="btn-test-meldstudio">Test Connection</button>
             </div>
           </div>
 
@@ -324,6 +361,12 @@
         updateCasparCGStatus(status);
       });
 
+      // Listen for real-time MeldStudio status changes
+      window.electronAPI.onMeldStudioStatusChanged((status) => {
+        console.log('MeldStudio status changed:', status);
+        updateMeldStudioStatus(status);
+      });
+
       // Listen for update notifications (from GitHub check or admin push)
       window.electronAPI.onUpdateStatus((status) => {
         const banner = document.getElementById('update-banner');
@@ -419,6 +462,12 @@
       document.getElementById('casparcgPort').value = config.casparcg?.port || 5250;
       toggleCasparcgSettings();
 
+      // MeldStudio
+      document.getElementById('meldstudioEnabled').checked = config.meldstudio?.enabled || false;
+      document.getElementById('meldstudioHost').value = config.meldstudio?.host || '127.0.0.1';
+      document.getElementById('meldstudioPort').value = config.meldstudio?.port || 13376;
+      toggleMeldstudioSettings();
+
       // Service Mode
       document.getElementById('runAsService').checked = config.runAsService || false;
     }
@@ -436,6 +485,11 @@
     function toggleCasparcgSettings() {
       const enabled = document.getElementById('casparcgEnabled').checked;
       document.getElementById('casparcg-settings').style.display = enabled ? 'block' : 'none';
+    }
+
+    function toggleMeldstudioSettings() {
+      const enabled = document.getElementById('meldstudioEnabled').checked;
+      document.getElementById('meldstudio-settings').style.display = enabled ? 'block' : 'none';
     }
 
     function getSuspendReasonText(reason) {
@@ -510,6 +564,22 @@
         casparStatusEl.className = 'status-indicator disconnected';
         casparStatusEl.querySelector('.text').textContent = 'Disconnected';
         casparDetail.textContent = 'Connection lost';
+      }
+    }
+
+    // Real-time MeldStudio status update (called from event listener)
+    function updateMeldStudioStatus(status) {
+      const meldStatusEl = document.getElementById('status-meldstudio');
+      const meldDetail = document.getElementById('detail-meldstudio');
+
+      if (status.connected) {
+        meldStatusEl.className = 'status-indicator connected';
+        meldStatusEl.querySelector('.text').textContent = 'Connected';
+        meldDetail.textContent = `Meld Studio - ${status.host || '127.0.0.1'}:${status.port || 13376}`;
+      } else {
+        meldStatusEl.className = 'status-indicator disconnected';
+        meldStatusEl.querySelector('.text').textContent = 'Disconnected';
+        meldDetail.textContent = 'Connection lost';
       }
     }
 
@@ -594,6 +664,26 @@
         casparStatus.querySelector('.text').textContent = 'Disabled';
         casparDetail.textContent = 'Enable in Configuration';
       }
+
+      // MeldStudio status - check actual connection
+      const meldStatus = document.getElementById('status-meldstudio');
+      const meldDetail = document.getElementById('detail-meldstudio');
+      if (config.meldstudio?.enabled) {
+        const meldConn = await window.electronAPI.getMeldStudioStatus();
+        if (meldConn.connected) {
+          meldStatus.className = 'status-indicator connected';
+          meldStatus.querySelector('.text').textContent = 'Connected';
+          meldDetail.textContent = `Meld Studio - ${config.meldstudio.host}:${config.meldstudio.port}`;
+        } else {
+          meldStatus.className = 'status-indicator connecting';
+          meldStatus.querySelector('.text').textContent = 'Connecting...';
+          meldDetail.textContent = config.meldstudio.host + ':' + config.meldstudio.port;
+        }
+      } else {
+        meldStatus.className = 'status-indicator disconnected';
+        meldStatus.querySelector('.text').textContent = 'Disabled';
+        meldDetail.textContent = 'Enable in Configuration';
+      }
     }
 
     async function refreshLogs() {
@@ -608,6 +698,7 @@
     document.getElementById('obsEnabled').addEventListener('change', toggleObsSettings);
     document.getElementById('vmixEnabled').addEventListener('change', toggleVmixSettings);
     document.getElementById('casparcgEnabled').addEventListener('change', toggleCasparcgSettings);
+    document.getElementById('meldstudioEnabled').addEventListener('change', toggleMeldstudioSettings);
     document.getElementById('btn-refresh-logs').addEventListener('click', refreshLogs);
 
     // External links
@@ -719,6 +810,21 @@
       setTimeout(() => { btn.textContent = 'Test Connection'; }, 3000);
     });
 
+    document.getElementById('btn-test-meldstudio').addEventListener('click', async () => {
+      const btn = document.getElementById('btn-test-meldstudio');
+      btn.textContent = 'Testing...';
+      btn.disabled = true;
+
+      const result = await window.electronAPI.testMeldStudioConnection({
+        host: document.getElementById('meldstudioHost').value,
+        port: parseInt(document.getElementById('meldstudioPort').value)
+      });
+
+      btn.textContent = result.success ? '✓ Connected!' : '✗ ' + result.error;
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = 'Test Connection'; }, 3000);
+    });
+
     // Check for updates
     document.getElementById('btn-check-updates').addEventListener('click', async () => {
       const btn = document.getElementById('btn-check-updates');
@@ -758,6 +864,11 @@
           enabled: document.getElementById('casparcgEnabled').checked,
           host: document.getElementById('casparcgHost').value,
           port: parseInt(document.getElementById('casparcgPort').value)
+        },
+        meldstudio: {
+          enabled: document.getElementById('meldstudioEnabled').checked,
+          host: document.getElementById('meldstudioHost').value,
+          port: parseInt(document.getElementById('meldstudioPort').value)
         },
         runAsService: document.getElementById('runAsService').checked
       };

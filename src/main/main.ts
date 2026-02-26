@@ -7,6 +7,7 @@ import { SupabaseService, CommandPayload } from '../services/SupabaseService';
 import { OBSService } from '../services/OBSService';
 import { VMixService } from '../services/VMixService';
 import { CasparCGService } from '../services/CasparCGService';
+import { MeldStudioService } from '../services/MeldStudioService';
 import { UpdateChecker } from '../services/UpdateChecker';
 
 // Get icon path based on platform
@@ -27,6 +28,7 @@ let supabaseService: SupabaseService;
 let obsService: OBSService;
 let vmixService: VMixService;
 let casparService: CasparCGService;
+let meldService: MeldStudioService;
 let updateChecker: UpdateChecker;
 
 // Check for headless/service mode
@@ -151,6 +153,7 @@ function getConnections() {
   const obsStatus = obsService.getStatus();
   const vmixStatus = vmixService.getStatus();
   const casparStatus = casparService.getStatus();
+  const meldStatus = meldService.getStatus();
   return {
     obs: {
       connected: obsStatus.connected,
@@ -168,6 +171,11 @@ function getConnections() {
       connected: casparStatus.connected,
       host: casparStatus.host,
       port: casparStatus.port
+    },
+    meldstudio: {
+      connected: meldStatus.connected,
+      host: meldStatus.host,
+      port: meldStatus.port
     }
   };
 }
@@ -739,6 +747,273 @@ async function handleCasparCGCommand(cmd: CommandPayload): Promise<void> {
   }
 }
 
+// Handle MeldStudio commands from Smart Panel
+async function handleMeldStudioCommand(cmd: CommandPayload): Promise<void> {
+  const requestId = cmd.request_id;
+  const responseChannel = cmd.response_channel;
+
+  try {
+    switch (cmd.action) {
+      case 'meld_connect': {
+        const host = (cmd.params.host as string) || '127.0.0.1';
+        const port = (cmd.params.port as number) || 13376;
+
+        const result = await meldService.connect({ host, port });
+        await supabaseService.updateConnectionStatus(getConnections());
+        await supabaseService.sendResponse(requestId!, {
+          success: result.connected,
+          error: result.error || null
+        }, responseChannel);
+        break;
+      }
+
+      case 'meld_get_session': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const session = meldService.getSession();
+        await supabaseService.sendResponse(requestId!, {
+          success: true,
+          data: session
+        }, responseChannel);
+        break;
+      }
+
+      case 'meld_show_scene': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { sceneId } = cmd.params as any;
+        await meldService.showScene(sceneId);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_stage_scene': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { sceneId } = cmd.params as any;
+        await meldService.stageScene(sceneId);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_show_staged': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.showStaged();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_layer_toggle': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { layerId } = cmd.params as any;
+        await meldService.toggleLayer(layerId);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_set_property': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { objectId, propertyName, propertyValue } = cmd.params as any;
+        await meldService.setProperty(objectId, propertyName, propertyValue);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_effect_toggle': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { effectId } = cmd.params as any;
+        await meldService.toggleEffect(effectId);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_toggle_mute': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { trackId } = cmd.params as any;
+        await meldService.toggleMute(trackId);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_set_gain': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { trackId, gain } = cmd.params as any;
+        await meldService.setGain(trackId, gain);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_start_streaming': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.startStreaming();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_stop_streaming': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.stopStreaming();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_start_recording': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.startRecording();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_stop_recording': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.stopRecording();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_toggle_virtual_camera': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.toggleVirtualCamera();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_media_play': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { layerId } = cmd.params as any;
+        await meldService.mediaPlay(layerId);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_media_pause': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { layerId } = cmd.params as any;
+        await meldService.mediaPause(layerId);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_media_seek': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { layerId, seekTime } = cmd.params as any;
+        await meldService.mediaSeek(layerId, seekTime);
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_screenshot': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.screenshot();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_record_clip': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.recordClip();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_replay_show': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.showReplay();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_replay_dismiss': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        await meldService.dismissReplay();
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      case 'meld_stream_event': {
+        if (!meldService.isConnected()) {
+          await supabaseService.sendError(requestId!, 'MeldStudio not connected', responseChannel);
+          break;
+        }
+        const { eventType, eventData } = cmd.params as any;
+        await meldService.sendStreamEvent(eventType, eventData || {});
+        await supabaseService.sendResponse(requestId!, { success: true }, responseChannel);
+        break;
+      }
+
+      default:
+        await supabaseService.sendError(requestId!, `Unknown command: ${cmd.action}`, responseChannel);
+        break;
+    }
+  } catch (error) {
+    const errorMsg = (error as Error).message;
+    logger.error(`[MeldStudio] Command failed: ${cmd.action} - ${errorMsg}`);
+    if (requestId) {
+      await supabaseService.sendError(requestId, errorMsg, responseChannel);
+    }
+  }
+}
+
 // Handle all commands from Smart Panel
 function handleCommand(cmd: CommandPayload): void {
   logger.info(`[Command] Received: ${cmd.action}`);
@@ -760,6 +1035,12 @@ function handleCommand(cmd: CommandPayload): void {
     handleCasparCGCommand(cmd);
     return;
   }
+
+  // MeldStudio commands
+  if (cmd.action.startsWith('meld_')) {
+    handleMeldStudioCommand(cmd);
+    return;
+  }
 }
 
 function initializeApp(): void {
@@ -773,6 +1054,7 @@ function initializeApp(): void {
   obsService = new OBSService(logger);
   vmixService = new VMixService(logger);
   casparService = new CasparCGService(logger);
+  meldService = new MeldStudioService(logger);
 
   // Auto-connect to OBS if configured
   const config = configManager.get();
@@ -800,6 +1082,15 @@ function initializeApp(): void {
     casparService.connect({
       host: config.casparcg.host,
       port: config.casparcg.port || 5250
+    });
+  }
+
+  // Auto-connect to MeldStudio if configured
+  if (config.meldstudio?.enabled && config.meldstudio.host) {
+    logger.info('[MeldStudio] Auto-connecting with saved config...');
+    meldService.connect({
+      host: config.meldstudio.host,
+      port: config.meldstudio.port || 13376
     });
   }
 
@@ -853,6 +1144,18 @@ function initializeApp(): void {
     logger.info(`[CasparCG] Status changed: connected=${status.connected}`);
     if (mainWindow) {
       mainWindow.webContents.send('casparcg-status-changed', status);
+    }
+    // Update Smart Panel with new connection status
+    if (supabaseService.isConnected()) {
+      supabaseService.updateConnectionStatus(getConnections());
+    }
+  });
+
+  // Set up MeldStudio status change callback
+  meldService.onStatusChange((status) => {
+    logger.info(`[MeldStudio] Status changed: connected=${status.connected}`);
+    if (mainWindow) {
+      mainWindow.webContents.send('meldstudio-status-changed', status);
     }
     // Update Smart Panel with new connection status
     if (supabaseService.isConnected()) {
@@ -1081,6 +1384,30 @@ function setupIpcHandlers(): void {
     return { connected: status.connected };
   });
 
+  // MeldStudio Connection
+  ipcMain.handle('test-meldstudio-connection', async (_event, config: { host: string; port: number }): Promise<{ success: boolean; error?: string }> => {
+    logger.info(`[MeldStudio] Testing connection to ${config.host}:${config.port}...`);
+    const result = await meldService.connect({
+      host: config.host,
+      port: config.port
+    });
+
+    if (result.connected) {
+      return { success: true };
+    }
+    return { success: false, error: result.error };
+  });
+
+  ipcMain.handle('disconnect-meldstudio', async (): Promise<void> => {
+    logger.info('[MeldStudio] Disconnecting...');
+    await meldService.disconnect();
+  });
+
+  ipcMain.handle('get-meldstudio-status', (): { connected: boolean } => {
+    const status = meldService.getStatus();
+    return { connected: status.connected };
+  });
+
   // Update checker
   ipcMain.handle('check-for-updates', async (): Promise<void> => {
     await updateChecker.checkForUpdates();
@@ -1140,6 +1467,7 @@ app.on('before-quit', async () => {
   await obsService.disconnect();
   await vmixService.disconnect();
   await casparService.disconnect();
+  await meldService.disconnect();
   await supabaseService.disconnect();
   logger.info('Goodbye!');
 });

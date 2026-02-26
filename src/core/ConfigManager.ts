@@ -112,6 +112,11 @@ export class ConfigManager {
         host: 'localhost',
         port: 5250
       },
+      meldstudio: {
+        enabled: false,
+        host: '127.0.0.1',
+        port: 13376
+      },
       dataSources: [],
       settings: {
         autoStart: false,

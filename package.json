@@ -1,12 +1,12 @@
 {
   "name": "smart-panel-connector",
-  "version": "1.6.3",
+  "version": "1.7.0",
   "description": "Local middleware for Smart Panel - Bridge between cloud and OBS/vMix",
   "main": "build/main/main.js",
   "scripts": {
     "prebuild": "node -e \"require('fs').rmSync('build', {recursive:true, force:true})\"",
     "build": "tsc && npm run copy-assets",
-    "copy-assets": "node -e \"const fs=require('fs');fs.mkdirSync('build/renderer',{recursive:true});fs.copyFileSync('src/renderer/index.html','build/renderer/index.html');fs.copyFileSync('src/renderer/styles.css','build/renderer/styles.css');fs.copyFileSync('assets/logo.jpeg','build/renderer/logo.jpeg');\"",
+    "copy-assets": "node -e \"const fs=require('fs');fs.mkdirSync('build/renderer',{recursive:true});fs.mkdirSync('build/lib',{recursive:true});fs.copyFileSync('src/renderer/index.html','build/renderer/index.html');fs.copyFileSync('src/renderer/styles.css','build/renderer/styles.css');fs.copyFileSync('assets/logo.jpeg','build/renderer/logo.jpeg');fs.copyFileSync('src/lib/qwebchannel.js','build/lib/qwebchannel.js');\"",
     "dev": "npm run build && electron .",
     "dev:watch": "concurrently \"tsc -w\" \"nodemon --watch build -e js --exec electron .\"",
     "start": "electron .",

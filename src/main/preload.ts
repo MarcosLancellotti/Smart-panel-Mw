@@ -47,6 +47,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCasparCGStatus: (): Promise<{ connected: boolean }> =>
     ipcRenderer.invoke('get-casparcg-status'),
 
+  // MeldStudio
+  testMeldStudioConnection: (config: { host: string; port: number }): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('test-meldstudio-connection', config),
+  getMeldStudioStatus: (): Promise<{ connected: boolean }> =>
+    ipcRenderer.invoke('get-meldstudio-status'),
+
   // Real-time status change events
   onOBSStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => {
     ipcRenderer.on('obs-status-changed', (_event, status) => callback(status));
@@ -56,6 +62,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   onCasparCGStatusChanged: (callback: (status: { connected: boolean; host?: string; port?: number }) => void) => {
     ipcRenderer.on('casparcg-status-changed', (_event, status) => callback(status));
+  },
+  onMeldStudioStatusChanged: (callback: (status: { connected: boolean; host?: string; port?: number }) => void) => {
+    ipcRenderer.on('meldstudio-status-changed', (_event, status) => callback(status));
   },
 
   // Update checker
@@ -89,9 +98,12 @@ declare global {
       getVMixStatus: () => Promise<{ connected: boolean; version?: string }>;
       testCasparCGConnection: (config: { host: string; port: number }) => Promise<{ success: boolean; error?: string }>;
       getCasparCGStatus: () => Promise<{ connected: boolean }>;
+      testMeldStudioConnection: (config: { host: string; port: number }) => Promise<{ success: boolean; error?: string }>;
+      getMeldStudioStatus: () => Promise<{ connected: boolean }>;
       onOBSStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => void;
       onVMixStatusChanged: (callback: (status: { connected: boolean; version?: string; host?: string; port?: number }) => void) => void;
       onCasparCGStatusChanged: (callback: (status: { connected: boolean; host?: string; port?: number }) => void) => void;
+      onMeldStudioStatusChanged: (callback: (status: { connected: boolean; host?: string; port?: number }) => void) => void;
       checkForUpdates: () => Promise<void>;
       openReleasePage: () => Promise<void>;
       downloadAndInstall: () => Promise<void>;

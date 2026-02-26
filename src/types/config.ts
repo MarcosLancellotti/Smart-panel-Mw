@@ -23,7 +23,13 @@ export interface SmartPanelConfig {
     host: string;
     port: number;
   }
-  
+
+  export interface MeldStudioConfig {
+    enabled: boolean;
+    host: string;
+    port: number;
+  }
+
   export interface DataSourceConfig {
     type: 'excel' | 'csv' | 'json';
     name: string;
@@ -43,6 +49,7 @@ export interface SmartPanelConfig {
     obs?: OBSConfig;
     vmix?: VMixConfig;
     casparcg?: CasparCGConfig;
+    meldstudio?: MeldStudioConfig;
     dataSources?: DataSourceConfig[];
     settings: SettingsConfig;
     runAsService?: boolean;
