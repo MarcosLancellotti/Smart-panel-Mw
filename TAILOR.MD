@@ -10,11 +10,11 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 ## PROJECT OVERVIEW
 
-**Smart Panel Middleware** is an Electron desktop application that bridges Smart Panel Cloud with local broadcast software (OBS Studio, vMix).
+**Smart Panel Middleware** is an Electron desktop application that bridges Smart Panel Cloud with local broadcast software (OBS Studio, vMix, CasparCG, Meld Studio).
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.4.3 |
+| **Version** | 1.7.0 |
 | **Platforms** | macOS (Apple Silicon), Windows (x64) |
 | **Framework** | Electron 28 + TypeScript |
 | **Cloud** | Supabase Realtime (WebSocket) |
@@ -53,20 +53,23 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 │                     │                               │
 │  ┌──────────────────▼──────────────────────────┐   │
 │  │  Command Router (main.ts)                   │   │
-│  │  - obs_* commands → OBSService              │   │
-│  │  - vmix_* commands → VMixService            │   │
-│  └────────┬─────────────────────┬──────────────┘   │
-│           │                     │                   │
-│  ┌────────▼────────┐  ┌────────▼────────┐         │
-│  │  OBSService     │  │  VMixService    │         │
-│  │  WebSocket v5   │  │  HTTP API       │         │
-│  │  localhost:4455 │  │  localhost:8088 │         │
-│  └────────┬────────┘  └────────┬────────┘         │
-└───────────┼─────────────────────┼───────────────────┘
-            │                     │
-     ┌──────▼──────┐       ┌──────▼──────┐
-     │ OBS Studio  │       │    vMix     │
-     └─────────────┘       └─────────────┘
+│  │  - obs_* → OBSService                      │   │
+│  │  - vmix_* → VMixService                    │   │
+│  │  - caspar_* → CasparCGService              │   │
+│  │  - meld_* → MeldStudioService              │   │
+│  └──┬──────────┬──────────┬──────────┬────────┘   │
+│     │          │          │          │             │
+│  ┌──▼───┐  ┌──▼───┐  ┌──▼─────┐ ┌──▼──────┐     │
+│  │ OBS  │  │ vMix │  │Caspar  │ │  Meld   │     │
+│  │ WS5  │  │ HTTP │  │TCP/AMCP│ │QWebChan │     │
+│  │:4455 │  │:8088 │  │ :5250  │ │ :13376  │     │
+│  └──┬───┘  └──┬───┘  └──┬─────┘ └──┬──────┘     │
+└─────┼─────────┼─────────┼──────────┼─────────────┘
+      │         │         │          │
+  ┌───▼───┐ ┌──▼──┐ ┌───▼────┐ ┌──▼──────┐
+  │  OBS  │ │vMix │ │CasparCG│ │  Meld   │
+  │Studio │ │     │ │        │ │ Studio  │
+  └───────┘ └─────┘ └────────┘ └─────────┘
 ```
 
 ---
@@ -79,10 +82,12 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 | Language | TypeScript (strict) |
 | Cloud | Supabase (Realtime + RPC) |
 | OBS | obs-websocket-js v5 |
-| vMix | HTTP API (fetch) |
+| vMix | HTTP API (axios) |
+| CasparCG | TCP / AMCP (net.Socket) |
+| Meld Studio | Qt WebChannel over WebSocket (ws) |
 | Logging | winston + daily-rotate-file |
 | Build | electron-builder |
-| Packaging | ZIP with DMG + PDF (macOS), ZIP with GUI installer (Windows) |
+| Packaging | DMG (macOS), ZIP with GUI installer (Windows) |
 
 ---
 
@@ -90,7 +95,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 ```
 smart-panel-middleware/
-├── package.json              # v1.4.3
+├── package.json              # v1.7.0
 ├── tsconfig.json
 ├── tailor.config.js          # electron-builder config
 ├── README.md                 # User installation guide
@@ -107,18 +112,24 @@ smart-panel-middleware/
 │   │   ├── index.html        # UI (vanilla JS)
 │   │   └── styles.css
 │   ├── services/
-│   │   ├── SupabaseService.ts  # Cloud connection
-│   │   ├── OBSService.ts       # OBS WebSocket
-│   │   ├── VMixService.ts      # vMix HTTP
-│   │   └── UpdateChecker.ts    # Version check + one-click update
+│   │   ├── SupabaseService.ts   # Cloud connection
+│   │   ├── OBSService.ts        # OBS WebSocket v5
+│   │   ├── VMixService.ts       # vMix HTTP API
+│   │   ├── CasparCGService.ts   # CasparCG TCP/AMCP
+│   │   ├── MeldStudioService.ts # Meld Studio QWebChannel
+│   │   └── UpdateChecker.ts     # Version check + one-click update
+│   ├── lib/
+│   │   └── qwebchannel.js      # Qt QWebChannel library (bundled)
 │   ├── core/
 │   │   ├── ConfigManager.ts    # config.json
 │   │   └── LogManager.ts       # winston logging
-│   └── types/
-│       └── config.ts
+│   ├── types/
+│   │   └── config.ts
+│   └── utils/
+│       └── paths.ts
 ├── build/                    # TypeScript output
 └── dist/                     # electron-builder output
-    ├── Smart-Panel-Middleware-mac.zip
+    ├── Smart-Panel-Middleware-mac.dmg
     └── Smart-Panel-Middleware-win.zip
 ```
 
@@ -155,7 +166,7 @@ const channel = supabase.channel(`middleware:${middlewareId}`);
 
 channel.on('broadcast', { event: 'command' }, (payload) => {
   const cmd = payload.payload;
-  // cmd.action: 'obs_switch_scene', 'vmix_show_overlay', etc.
+  // cmd.action: 'obs_switch_scene', 'meld_show_scene', etc.
   // cmd.params: { sceneName: 'Scene 1' }
   // cmd.request_id: 'uuid'
   // cmd.response_channel: 'response:uuid'
@@ -171,7 +182,9 @@ await supabase.rpc('update_middleware_status', {
   p_status: 'online',
   p_connections: {
     obs: { connected: true, version: '30.0', host: 'localhost', port: 4455 },
-    vmix: { connected: false }
+    vmix: { connected: false },
+    casparcg: { connected: false },
+    meldstudio: { connected: true, host: '127.0.0.1', port: 13376 }
   },
   p_metadata: { appVersion, os, lastHeartbeat }
 });
@@ -197,18 +210,22 @@ await supabase.rpc('update_middleware_status', {
 
 ---
 
-## OBS COMMANDS
+## OBS COMMANDS (16)
 
 | Command | Params | Description |
 |---------|--------|-------------|
 | `obs_connect` | host, port, password? | Connect to OBS |
 | `obs_get_scenes` | - | List all scenes |
+| `obs_get_current_scene` | - | Get current scene |
 | `obs_switch_scene` | sceneName | Change active scene |
+| `obs_get_sources` | sceneName | List sources in scene |
 | `obs_show_source` | sceneName, sourceName | Show source |
 | `obs_hide_source` | sceneName, sourceName | Hide source |
 | `obs_toggle_source` | sceneName, sceneItemId | Toggle visibility |
+| `obs_source_visibility` | sceneName, sceneItemId, visible | Set visibility |
 | `obs_set_text` | sourceName, text | Update text source |
 | `obs_refresh_browser` | sourceName | Refresh browser source |
+| `obs_set_browser_url` | sourceName, url | Set browser source URL |
 | `obs_start_streaming` | - | Start stream |
 | `obs_stop_streaming` | - | Stop stream |
 | `obs_start_recording` | - | Start recording |
@@ -216,7 +233,7 @@ await supabase.rpc('update_middleware_status', {
 
 ---
 
-## VMIX COMMANDS
+## VMIX COMMANDS (12)
 
 | Command | Params | Description |
 |---------|--------|-------------|
@@ -224,6 +241,7 @@ await supabase.rpc('update_middleware_status', {
 | `vmix_get_state` | - | Get full vMix state |
 | `vmix_show_overlay` | overlayNumber, inputKey | Show overlay |
 | `vmix_hide_overlay` | overlayNumber | Hide overlay |
+| `vmix_transition` | inputKey, transition, duration | Transition input |
 | `vmix_cut` | inputKey? | Cut transition |
 | `vmix_fade` | duration, inputKey? | Fade transition |
 | `vmix_set_text` | inputKey, fieldName, value | Update text |
@@ -231,6 +249,85 @@ await supabase.rpc('update_middleware_status', {
 | `vmix_stop_streaming` | - | Stop stream |
 | `vmix_start_recording` | - | Start recording |
 | `vmix_stop_recording` | - | Stop recording |
+
+---
+
+## CASPARCG COMMANDS (11)
+
+| Command | Params | Description |
+|---------|--------|-------------|
+| `caspar_connect` | host, port | Connect to CasparCG |
+| `caspar_play` | channel, layer, clip? | Play media |
+| `caspar_stop` | channel, layer | Stop media |
+| `caspar_load` | channel, layer, clip | Load media |
+| `caspar_loadbg` | channel, layer, clip, auto? | Load in background |
+| `caspar_clear` | channel, layer? | Clear channel/layer |
+| `caspar_cg_add` | channel, layer, template, playOnLoad, data? | Add CG template |
+| `caspar_cg_update` | channel, layer, data | Update CG data |
+| `caspar_cg_stop` | channel, layer | Stop CG template |
+| `caspar_cg_next` | channel, layer | Next CG step |
+| `caspar_cg_play` | channel, layer | Play CG template |
+
+---
+
+## MELDSTUDIO COMMANDS (23)
+
+### Connection & Session
+| Command | Params | Description |
+|---------|--------|-------------|
+| `meld_connect` | host, port | Connect to Meld Studio |
+| `meld_get_session` | - | Get scenes, layers, tracks, effects |
+
+### Scenes
+| Command | Params | Description |
+|---------|--------|-------------|
+| `meld_show_scene` | sceneId | Switch to scene (live) |
+| `meld_stage_scene` | sceneId | Stage scene (preview) |
+| `meld_show_staged` | - | Push staged scene live |
+
+### Layers & Effects
+| Command | Params | Description |
+|---------|--------|-------------|
+| `meld_layer_toggle` | layerId | Toggle layer visibility |
+| `meld_set_property` | objectId, propertyName, propertyValue | Set any property |
+| `meld_effect_toggle` | effectId | Toggle effect on/off |
+
+### Audio
+| Command | Params | Description |
+|---------|--------|-------------|
+| `meld_toggle_mute` | trackId | Mute/unmute audio track |
+| `meld_set_gain` | trackId, gain (0.0-1.0) | Set audio volume |
+
+### Stream / Record
+| Command | Params | Description |
+|---------|--------|-------------|
+| `meld_start_streaming` | - | Start stream |
+| `meld_stop_streaming` | - | Stop stream |
+| `meld_start_recording` | - | Start recording |
+| `meld_stop_recording` | - | Stop recording |
+| `meld_toggle_virtual_camera` | - | Toggle virtual camera |
+
+### Media Playback
+| Command | Params | Description |
+|---------|--------|-------------|
+| `meld_media_play` | layerId | Play media layer |
+| `meld_media_pause` | layerId | Pause media layer |
+| `meld_media_seek` | layerId, seekTime | Seek to time (seconds) |
+
+### Utility
+| Command | Params | Description |
+|---------|--------|-------------|
+| `meld_screenshot` | - | Take screenshot |
+| `meld_record_clip` | - | Record clip |
+| `meld_replay_show` | - | Show instant replay |
+| `meld_replay_dismiss` | - | Dismiss replay |
+
+### Widget / Stream Events
+| Command | Params | Description |
+|---------|--------|-------------|
+| `meld_stream_event` | eventType, eventData | Trigger widget event |
+
+**Event types:** `CONFETTIPOP_TRIGGER`, `STOPWATCH_START/STOP/RESET`, `COUNTDOWN_START/STOP`, `SUBATHON_START/STOP`, `WHEEL_SPIN`, `COUNTER_INCREMENT/DECREMENT/RESET`
 
 ---
 
@@ -257,6 +354,16 @@ await supabase.rpc('update_middleware_status', {
     "host": "localhost",
     "httpPort": 8088,
     "tcpPort": 8099
+  },
+  "casparcg": {
+    "enabled": false,
+    "host": "localhost",
+    "port": 5250
+  },
+  "meldstudio": {
+    "enabled": false,
+    "host": "127.0.0.1",
+    "port": 13376
   },
   "runAsService": false
 }
@@ -289,10 +396,11 @@ dist/
 
 ### GitHub Release
 ```bash
-gh release create v1.4.3 \
-  "./dist/Smart-Panel-Middleware-mac.zip" \
+gh release create v1.7.0 \
+  "./dist/Smart-Panel-Middleware-mac.dmg" \
   "./dist/Smart-Panel-Middleware-win.zip" \
-  --title "v1.4.3 - Description" \
+  --repo MarcosLancellotti/Smart-panel-Mw \
+  --title "v1.7.0 - Description" \
   --notes "Release notes..."
 ```
 
@@ -325,8 +433,8 @@ channel.send({
   payload: {
     action: 'middleware_update_notify',
     params: {
-      version: '1.5.0',                         // required
-      message: 'Security fix - please update',  // optional
+      version: '1.7.0',                         // required
+      message: 'New: MeldStudio integration',    // optional
       required: false                             // optional (true = red banner, no dismiss)
     }
   }
@@ -337,49 +445,49 @@ channel.send({
 
 `settings.checkUpdates` (boolean, default: `true`) — controls automatic GitHub check on startup. Admin push notifications are always received regardless of this flag.
 
-### Key Files
-
-| File | Role |
-|------|------|
-| `src/services/UpdateChecker.ts` | GitHub API check, download, version compare |
-| `src/services/SupabaseService.ts` | `middleware_update_notify` handler + `onUpdateNotify` callback |
-| `src/main/main.ts` | IPC handlers: `check-for-updates`, `open-release-page`, `download-and-install` |
-| `src/main/preload.ts` | Exposed: `checkForUpdates`, `openReleasePage`, `downloadAndInstall`, `onUpdateStatus` |
-
 ---
 
-## RECENT CHANGES (v1.4.x)
+## VERSION HISTORY
+
+### v1.7.0 (2026-02-26)
+- **Meld Studio integration** via Qt QWebChannel over WebSocket (ws://127.0.0.1:13376)
+- 23 commands: scenes, layers, effects, audio, stream/record, media, screenshots, replay, widget events
+- Session data query (`meld_get_session`) for frontend scene/layer pickers
+- QWebChannel library bundled (not fetched at runtime)
+- UI: status card, config section, test connection for Meld Studio
+
+### v1.6.3 (2026-02-17)
+- Renamed `[Supabase]` to `[Cloud]` in all log messages
+
+### v1.6.2 (2026-02-16)
+- **CasparCG integration** via TCP/AMCP protocol (port 5250)
+- 11 commands: media playback + CG template control
+- Manual "Check for Updates" button in config
+
+### v1.5.0 (2026-02-15)
+- Version bump, build improvements
 
 ### v1.4.3 (2026-02-09)
 - Update checker via GitHub Releases API (check on startup, one-click download)
 - `middleware_update_notify` command for admin push notifications
 - Update banner UI with progress bar, required/dismissable modes
-- Wired `checkUpdates` config flag (was dead code)
-- Installation Guide PDF included in Windows ZIP
-- README: removed GitHub URLs, fixed macOS download link, license updated to 2026
 
 ### v1.4.2 (2026-02-02)
 - Changed macOS packaging from ZIP to DMG installer
 - All installer texts now in English
-- Fixed Windows app icon (was showing default Electron icon)
+- Fixed Windows app icon
 
 ### v1.4.1 (2026-01-07)
 - Real-time OBS/vMix status updates (instant UI feedback)
-- Fixed "OBS WebSocket not connected" error
 - Status change callbacks for services
-- New IPC events: `obs-status-changed`, `vmix-status-changed`
 
 ### v1.4.0 (2026-01-05)
 - Suspend/Resume system implementation
-- `middleware_disable`/`middleware_enable` commands
-- `active` field handling in authenticate/heartbeat
-- Auto-retry when suspended (60s interval)
-- GUI installers for Mac (AppleScript) and Windows (PowerShell)
+- GUI installers for Mac and Windows
 
 ### v1.3.0
 - Heartbeat RPC alignment with backend
 - Prevent duplicate channel subscriptions
-- Keep channel active when suspended
 
 ---
 
@@ -391,7 +499,10 @@ channel.send({
 | `src/services/SupabaseService.ts` | Cloud connection, auth, heartbeat, suspend/resume |
 | `src/services/OBSService.ts` | OBS WebSocket v5 integration |
 | `src/services/VMixService.ts` | vMix HTTP API integration |
+| `src/services/CasparCGService.ts` | CasparCG TCP/AMCP integration |
+| `src/services/MeldStudioService.ts` | Meld Studio QWebChannel integration |
 | `src/services/UpdateChecker.ts` | GitHub API version check, one-click download & install |
+| `src/lib/qwebchannel.js` | Qt QWebChannel library (bundled) |
 | `src/main/preload.ts` | IPC bridge (exposes APIs to renderer) |
 | `src/renderer/index.html` | UI with status cards, config form, logs |
 | `tailor.config.js` | electron-builder config |
@@ -468,7 +579,7 @@ Open an older version of the middleware → it should detect the new version →
 ## DOWNLOAD URLS
 
 **Latest Release:**
-- Mac: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-mac.zip`
+- Mac: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-mac.dmg`
 - Windows: `https://github.com/MarcosLancellotti/Smart-panel-Mw/releases/latest/download/Smart-Panel-Middleware-win.zip`
 
 ---
@@ -486,12 +597,13 @@ CREATE OR REPLACE FUNCTION authenticate_middleware(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, extensions
 AS $$
 DECLARE
   v_key_record api_keys%ROWTYPE;
   v_middleware middlewares%ROWTYPE;
 BEGIN
-  -- 1. Verify API key with bcrypt
+  -- 1. Verify API key with bcrypt (pgcrypto in extensions schema)
   SELECT * INTO v_key_record
   FROM api_keys
   WHERE is_active = true
