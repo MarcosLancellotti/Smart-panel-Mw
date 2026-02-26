@@ -14,7 +14,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.7.0 |
+| **Version** | 1.7.1 |
 | **Platforms** | macOS (Apple Silicon), Windows (x64) |
 | **Framework** | Electron 28 + TypeScript |
 | **Cloud** | Supabase Realtime (WebSocket) |
@@ -95,7 +95,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 ```
 smart-panel-middleware/
-├── package.json              # v1.7.0
+├── package.json              # v1.7.1
 ├── tsconfig.json
 ├── tailor.config.js          # electron-builder config
 ├── README.md                 # User installation guide
@@ -396,7 +396,7 @@ dist/
 
 ### GitHub Release
 ```bash
-gh release create v1.7.0 \
+gh release create v1.7.1 \
   "./dist/Smart-Panel-Middleware-mac.dmg" \
   "./dist/Smart-Panel-Middleware-win.zip" \
   --repo MarcosLancellotti/Smart-panel-Mw \
@@ -448,6 +448,9 @@ channel.send({
 ---
 
 ## VERSION HISTORY
+
+### v1.7.1 (2026-02-26)
+- **Fix:** Re-subscribe to correct Realtime channel when `middleware_id` changes after re-authentication (was causing command timeouts)
 
 ### v1.7.0 (2026-02-26)
 - **Meld Studio integration** via Qt QWebChannel over WebSocket (ws://127.0.0.1:13376)
@@ -511,7 +514,7 @@ channel.send({
 
 ## RELEASE CHECKLIST
 
-Every time a new version is released, follow these steps **in order**. Skipping the upload step will cause the in-app updater to fail.
+**MANDATORY after every commit/fix/update.** This is NOT optional — the in-app updater will fail if you skip the GitHub release step. Every time code is changed, follow ALL steps in order.
 
 ### 1. Bump version
 
@@ -573,6 +576,7 @@ Open an older version of the middleware → it should detect the new version →
 | `gh release create` without attaching files | `"assets":[]`, updater fails | `gh release upload v<X> <files> --clobber` |
 | Building before bumping `package.json` version | DMG/ZIP contain old version | Bump version first, then rebuild |
 | Wrong asset filenames | UpdateChecker can't find download | Must be `Smart-Panel-Middleware-mac.dmg` and `Smart-Panel-Middleware-win.zip` |
+| Committing code without building + releasing | Users don't get the fix | **ALWAYS** bump → build → release → verify after every change |
 
 ---
 
