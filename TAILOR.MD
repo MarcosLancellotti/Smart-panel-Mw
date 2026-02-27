@@ -14,7 +14,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.7.1 |
+| **Version** | 1.7.2 |
 | **Platforms** | macOS (Apple Silicon), Windows (x64) |
 | **Framework** | Electron 28 + TypeScript |
 | **Cloud** | Supabase Realtime (WebSocket) |
@@ -95,7 +95,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 ```
 smart-panel-middleware/
-├── package.json              # v1.7.1
+├── package.json              # v1.7.2
 ├── tsconfig.json
 ├── tailor.config.js          # electron-builder config
 ├── README.md                 # User installation guide
@@ -448,6 +448,10 @@ channel.send({
 ---
 
 ## VERSION HISTORY
+
+### v1.7.2 (2026-02-27)
+- Download progress banner now shows: %, downloaded/total MB, speed (MB/s), and ETA
+- UI updates throttled to 300ms to prevent flickering
 
 ### v1.7.1 (2026-02-26)
 - **Fix:** Re-subscribe to correct Realtime channel when `middleware_id` changes after re-authentication (was causing command timeouts)
