@@ -130,22 +130,63 @@ export class UpdateChecker {
     shell.openExternal(`https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`);
   }
 
-  private downloadFile(url: string, destPath: string): Promise<void> {
+  private async downloadFile(url: string, destPath: string, maxRetries = 3): Promise<void> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 1) {
+          this.logger.info(`[Updater] Retry attempt ${attempt}/${maxRetries}...`);
+          this.sendToRenderer({ status: 'downloading', progress: 0 });
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        await this.downloadFileOnce(url, destPath);
+        return;
+      } catch (err) {
+        lastError = err as Error;
+        this.logger.warn(`[Updater] Download attempt ${attempt} failed: ${lastError.message}`);
+        fs.unlink(destPath, () => {});
+      }
+    }
+
+    throw lastError || new Error('Download failed after retries');
+  }
+
+  private downloadFileOnce(url: string, destPath: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const file = fs.createWriteStream(destPath);
+      let resolved = false;
 
-      const request = (reqUrl: string) => {
-        https.get(reqUrl, (res) => {
+      const cleanup = (err: Error) => {
+        if (resolved) return;
+        resolved = true;
+        file.close();
+        reject(err);
+      };
+
+      const request = (reqUrl: string, redirects = 0) => {
+        if (redirects > 5) {
+          cleanup(new Error('Too many redirects'));
+          return;
+        }
+
+        const parsedUrl = new URL(reqUrl);
+        const req = https.get({
+          hostname: parsedUrl.hostname,
+          path: parsedUrl.pathname + parsedUrl.search,
+          headers: { 'User-Agent': 'Smart-Panel-Middleware' },
+          timeout: 30000
+        }, (res) => {
           // Handle GitHub redirects (302 → S3)
-          if (res.statusCode === 302 && res.headers.location) {
-            request(res.headers.location);
+          if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+            res.resume();
+            request(res.headers.location, redirects + 1);
             return;
           }
 
           if (res.statusCode !== 200) {
-            file.close();
-            fs.unlink(destPath, () => {});
-            reject(new Error(`Download failed with status ${res.statusCode}`));
+            res.resume();
+            cleanup(new Error(`Download failed with status ${res.statusCode}`));
             return;
           }
 
@@ -181,15 +222,22 @@ export class UpdateChecker {
             }
           });
 
+          res.on('error', (err) => cleanup(err));
           res.pipe(file);
 
           file.on('finish', () => {
+            if (resolved) return;
+            resolved = true;
             file.close(() => resolve());
           });
-        }).on('error', (err) => {
-          file.close();
-          fs.unlink(destPath, () => {});
-          reject(err);
+
+          file.on('error', (err) => cleanup(err));
+        });
+
+        req.on('error', (err) => cleanup(err));
+        req.on('timeout', () => {
+          req.destroy();
+          cleanup(new Error('Connection timed out'));
         });
       };
 

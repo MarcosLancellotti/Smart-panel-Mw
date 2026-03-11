@@ -14,7 +14,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 | Attribute | Value |
 |-----------|-------|
-| **Version** | 1.7.2 |
+| **Version** | 2.0.2 |
 | **Platforms** | macOS (Apple Silicon), Windows (x64) |
 | **Framework** | Electron 28 + TypeScript |
 | **Cloud** | Supabase Realtime (WebSocket) |
@@ -95,7 +95,7 @@ You are **Tailor**, the CTO and lead technical architect of **Smart Panel Middle
 
 ```
 smart-panel-middleware/
-├── package.json              # v1.7.2
+├── package.json              # v2.0.2
 ├── tsconfig.json
 ├── tailor.config.js          # electron-builder config
 ├── README.md                 # User installation guide
@@ -448,6 +448,19 @@ channel.send({
 ---
 
 ## VERSION HISTORY
+
+### v2.0.2 (2026-03-11)
+- **Brand refresh (final):** SVG logo header replacing PNG for crisp rendering at all sizes
+- Fixed logo rendering issues from v2.0.0/v2.0.1 (PNG distortion, incorrect colors)
+- New `logo-header.svg` asset, removed PNG logo dependency from UI
+
+### v2.0.0 (2026-03-11)
+- **Brand refresh:** New Smart Panel logo (3x3 grid design), dark background variant
+- New macOS (.icns) and Windows (.png) app icons from brand assets
+- Colors updated to brand guide: Smart Blue (#2563EB) + Electric Cyan (#06B6D4)
+- Typography: Instrument Sans (body/UI), Unbounded (headings, uppercase)
+- Version badge redesigned with cyan accent styling
+- CSP updated to allow Google Fonts
 
 ### v1.7.2 (2026-02-27)
 - Download progress banner now shows: %, downloaded/total MB, speed (MB/s), and ETA
